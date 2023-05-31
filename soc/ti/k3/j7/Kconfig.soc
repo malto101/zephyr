@@ -1,0 +1,23 @@
+# Copyright (C) 2023 BeagleBoard.org Foundation
+# Copyright (C) 2023 S Prashanth
+# Copyright (c) 2024 Texas Instruments Incorporated
+# 	Andrew Davis <afd@ti.com>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_SERIES_J7
+	bool
+	select SOC_FAMILY_TI_K3
+
+config SOC_J721E_R5
+	bool
+	select SOC_SERIES_J7
+
+config SOC_SERIES
+	default "j7" if SOC_SERIES_J7
+
+config SOC
+	default "j721e" if SOC_J721E_R5
+
+config SOC_PART_NUMBER
+	default "J721e" if SOC_J721E_R5
