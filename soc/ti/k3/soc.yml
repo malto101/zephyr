@@ -10,3 +10,8 @@ family:
     - name: am6442
       cpuclusters:
       - name: m4
+  - name: j721e
+    socs:
+    - name: j721e
+      cpuclusters:
+      - name: r5

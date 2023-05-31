@@ -1,0 +1,43 @@
+# Copyright (C) 2023 BeagleBoard.org Foundation
+# Copyright (C) 2023 S Prashanth
+#
+# SPDX-License-Identifier: Apache-2.0
+
+if SOC_SERIES_J7
+
+config NUM_IRQS
+	default 512
+
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	default 19200000
+
+config SYS_CLOCK_TICKS_PER_SEC
+	default 10000
+
+config UART_NS16550
+	default y
+
+config UART_NS16550_TI_K3
+	default y
+
+choice UART_NS16550_VARIANT
+	default UART_NS16550_VARIANT_NS16750
+endchoice
+
+config PINCTRL
+	default y
+
+if !XIP
+
+config FLASH_SIZE
+	default 0
+
+config FLASH_BASE_ADDRESS
+	default 0
+
+endif # XIP
+
+config BUILD_OUTPUT_BIN
+	default n if SOC_J721E_R5
+
+endif # SOC_SERIES_J7
