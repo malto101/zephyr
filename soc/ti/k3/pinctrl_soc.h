@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef ZEPHYR_SOC_ARM64_TI_K3_PINCTRL_SOC_H_
-#define ZEPHYR_SOC_ARM64_TI_K3_PINCTRL_SOC_H_
+#ifndef ZEPHYR_SOC_TI_K3_PINCTRL_SOC_H_
+#define ZEPHYR_SOC_TI_K3_PINCTRL_SOC_H_
 
 #include <zephyr/devicetree.h>
 #include <zephyr/types.h>
@@ -37,4 +37,4 @@ typedef struct pinctrl_soc_pin pinctrl_soc_pin_t;
 }
 #endif
 
-#endif /* ZEPHYR_SOC_ARM64_TI_K3_PINCTRL_SOC_H_ */
+#endif /* ZEPHYR_SOC_TI_K3_PINCTRL_SOC_H_ */
