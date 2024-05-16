@@ -15,3 +15,6 @@ family:
     - name: j721e
       cpuclusters:
       - name: r5
+    - name: j722s
+      cpuclusters:
+      - name: r5_main

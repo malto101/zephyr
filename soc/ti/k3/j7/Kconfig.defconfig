@@ -14,6 +14,8 @@ config SYS_CLOCK_HW_CYCLES_PER_SEC
 config SYS_CLOCK_TICKS_PER_SEC
 	default 10000
 
+if SERIAL
+
 config UART_NS16550
 	default y
 
@@ -23,6 +25,8 @@ config UART_NS16550_TI_K3
 choice UART_NS16550_VARIANT
 	default UART_NS16550_VARIANT_NS16750
 endchoice
+
+endif # SERIAL
 
 config PINCTRL
 	default y
@@ -39,5 +43,6 @@ endif # XIP
 
 config BUILD_OUTPUT_BIN
 	default n if SOC_J721E_R5
+	default n if SOC_J722S_R5_MAIN
 
 endif # SOC_SERIES_J7

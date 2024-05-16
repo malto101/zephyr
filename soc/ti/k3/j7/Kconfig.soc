@@ -13,11 +13,17 @@ config SOC_J721E_R5
 	bool
 	select SOC_SERIES_J7
 
+config SOC_J722S_R5_MAIN
+	bool
+	select SOC_SERIES_J7
+
 config SOC_SERIES
 	default "j7" if SOC_SERIES_J7
 
 config SOC
 	default "j721e" if SOC_J721E_R5
+	default "j722s" if SOC_J722S_R5_MAIN
 
 config SOC_PART_NUMBER
 	default "J721e" if SOC_J721E_R5
+	default "j722s" if SOC_J722S_R5_MAIN
