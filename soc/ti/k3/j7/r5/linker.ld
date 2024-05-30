@@ -6,7 +6,7 @@
 
 #include <zephyr/arch/arm/cortex_a_r/scripts/linker.ld>
 
-ENTRY(_vector_table)
+ENTRY(__boot_spring)
 
 SECTIONS
 {
@@ -14,6 +14,13 @@ SECTIONS
 	SECTION_PROLOGUE(.resource_table,, SUBALIGN(4))
 	{
 		KEEP(*(.resource_table*))
-	} GROUP_LINK_IN(DRAM)
+	} GROUP_LINK_IN(RAM)
 #endif
+
+	SECTION_PROLOGUE(boot_start,, SUBALIGN(4))
+	{
+		KEEP(*(.boot_section._start))
+		KEEP(*(.boot_section))
+		KEEP(*(".boot_section.*"))
+	} GROUP_LINK_IN(ATCM)
 }
