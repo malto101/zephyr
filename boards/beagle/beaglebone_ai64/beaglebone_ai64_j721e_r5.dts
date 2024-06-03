@@ -32,9 +32,15 @@
 		reg = <0xa2000000 DT_SIZE_M(1)>;
 	};
 
-	ddr1: memory@a2100000 {
+	rsc_table: memory@a2100000 {
 		compatible = "zephyr,memory-region", "mmio-sram";
-		reg = <0xa2100000 DT_SIZE_M(15)>;
+		reg = <0xa2100000 DT_SIZE_M(1)>;
+		zephyr,memory-region = "RSC_TABLE";
+	};
+
+	ddr1: memory@a2200000 {
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0xa2200000 DT_SIZE_M(14)>;
 		zephyr,memory-region = "DRAM";
 	};
 };
