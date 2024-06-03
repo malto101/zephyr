@@ -14,7 +14,7 @@ SECTIONS
 	SECTION_PROLOGUE(.resource_table,, SUBALIGN(4))
 	{
 		KEEP(*(.resource_table*))
-	} GROUP_LINK_IN(RAM)
+	} GROUP_LINK_IN(RSC_TABLE)
 #endif
 
 	SECTION_PROLOGUE(boot_start,, SUBALIGN(4))
