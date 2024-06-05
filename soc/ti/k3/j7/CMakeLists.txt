@@ -5,7 +5,7 @@
 
 zephyr_include_directories(.)
 
-if(CONFIG_SOC_J721E_R5 OR CONFIG_SOC_J722S_R5_MAIN)
+if(CONFIG_SOC_J721E_R5 OR CONFIG_SOC_J722S_R5_MAIN OR CONFIG_SOC_J722S_R5_MCU)
   zephyr_sources(r5/soc.c)
   zephyr_sources(r5/boot.S)
   zephyr_sources(r5/MpuP_armv7r_asm.S)

@@ -44,5 +44,6 @@ endif # XIP
 config BUILD_OUTPUT_BIN
 	default n if SOC_J721E_R5
 	default n if SOC_J722S_R5_MAIN
+	default n if SOC_J722S_R5_MCU
 
 endif # SOC_SERIES_J7

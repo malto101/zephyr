@@ -18,3 +18,4 @@ family:
     - name: j722s
       cpuclusters:
       - name: r5_main
+      - name: r5_mcu
