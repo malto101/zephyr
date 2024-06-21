@@ -1,0 +1,9 @@
+description: TI OMAP I2C controller
+
+compatible: "ti,omap-i2c"
+
+include: i2c-controller.yaml
+
+properties:
+  reg:
+    required: true

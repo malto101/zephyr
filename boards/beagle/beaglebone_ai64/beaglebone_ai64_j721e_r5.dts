@@ -47,8 +47,9 @@
 };
 
 &i2c4 {
+	compatible = "ti,omap-i2c";
 	status = "okay";
-	clock-frequency = <400000>;
+	reg = <0x02040000>;
 	pinctrl-0 = <&i2c4_scl_default &i2c4_sda_default>;
 	pinctrl-names = "default";
 };
