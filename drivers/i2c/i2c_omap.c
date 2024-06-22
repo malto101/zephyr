@@ -13,41 +13,6 @@ LOG_MODULE_REGISTER(i2c_omap);
 
 typedef void (*init_func_t)(const struct device *dev);
 
-struct omap_i2c_dev {
-	const struct device *dev;
-	mm_reg_t base; /* memory-mapped register base address */
-	int irq;
-	int reg_shift; /* bit shift for I2C register addresses */
-	struct k_sem cmd_complete;
-	const struct device *ioarea;
-	uint32_t latency; /* maximum mpu wkup latency */
-	void (*set_mpu_wkup_lat)(const struct device *dev, long latency);
-	uint32_t speed; /* Speed of bus in kHz */
-	uint32_t flags;
-	uint16_t scheme;
-	uint16_t cmd_err;
-	uint8_t *buf;
-	uint8_t *regs;
-	size_t buf_len;
-	struct i2c_driver_api *api;
-	uint8_t threshold;
-	uint8_t fifo_size; /* use as flag and value
-			    * fifo_size==0 implies no fifo
-			    * if set, should be trsh+1
-			    */
-	uint32_t rev;
-	bool b_hw;        /* bad h/w fixes */
-	bool bb_valid;    /* true when BB-bit reflects the I2C bus state */
-	bool receiver;    /* true when we're in receiver mode */
-	uint16_t iestate; /* Saved interrupt register */
-	uint16_t pscstate;
-	uint16_t scllstate;
-	uint16_t sclhstate;
-	uint16_t syscstate;
-	uint16_t westate;
-	uint16_t errata;
-};
-
 #define I2C_REVNB_LO        0x0
 #define I2C_REVNB_HI        0x4
 #define I2C_SYSC            0x10
@@ -83,7 +48,56 @@ struct omap_i2c_dev {
 #define I2C_ACTOA           0xd0
 #define I2C_SBLOCK          0xd4
 
-static inline void omap_i2c_write_reg(struct omap_i2c_dev *omap, int reg, u16 val)
+LOG_MODULE_REGISTER(omap_i2c, CONFIG_I2C_LOG_LEVEL);
+
+struct omap_i2c_config {
+	uint32_t base;
+	uint32_t irq;
+};
+
+struct omap_i2c_data {
+	struct k_sem lock;
+	// Additional runtime data
+};
+
+static int omap_i2c_configure(const struct device *dev, uint32_t dev_config)
 {
-	writew_relaxed(val, omap->base + (omap->regs[reg] << omap->reg_shift));
+	// Configuration implementation
+	return 0;
 }
+
+static int omap_i2c_transfer(const struct device *dev, struct i2c_msg *msgs, uint8_t num_msgs,
+			     uint16_t addr)
+{
+	// Transfer implementation
+	return 0;
+}
+
+static int omap_i2c_init(const struct device *dev)
+{
+	const struct omap_i2c_config *config = dev->config;
+	struct omap_i2c_data *data = dev->data;
+
+	k_sem_init(&data->lock, 1, 1);
+
+	// Initialize the hardware
+
+	return 0;
+}
+
+static const struct i2c_driver_api omap_i2c_driver_api = {
+	.configure = omap_i2c_configure,
+	.transfer = omap_i2c_transfer,
+};
+
+#define OMAP_I2C_INIT(inst)                                                                        \
+	static struct omap_i2c_data omap_i2c_data_##inst;                                          \
+	static const struct omap_i2c_config omap_i2c_config_##inst = {                             \
+		.base = DT_INST_REG_ADDR(inst),                                                    \
+		.irq = DT_INST_IRQN(inst),                                                         \
+	};                                                                                         \
+	DEVICE_DT_INST_DEFINE(inst, &omap_i2c_init, NULL, &omap_i2c_data_##inst,                   \
+			      &omap_i2c_config_##inst, POST_KERNEL, CONFIG_I2C_INIT_PRIORITY,      \
+			      &omap_i2c_driver_api);
+
+DT_INST_FOREACH_STATUS_OKAY(OMAP_I2C_INIT)

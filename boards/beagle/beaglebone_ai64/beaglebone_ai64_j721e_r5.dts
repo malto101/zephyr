@@ -37,6 +37,13 @@
 		reg = <0xa2100000 DT_SIZE_M(15)>;
 		zephyr,memory-region = "DRAM";
 	};
+
+	i2c4: i2c {
+		compatible = "ti,o";
+		status = "okay";
+		pinctrl-0 = <&i2c4_scl_default &i2c4_sda_default>;
+		pinctrl-names = "default";
+	};
 };
 
 &uart2 {
@@ -44,14 +51,6 @@
 	pinctrl-0 = <&uart2_tx_default &uart2_rx_default>;
 	pinctrl-names = "default";
 	current-speed = <115200>;
-};
-
-&i2c4 {
-	compatible = "ti,omap-i2c";
-	status = "okay";
-	reg = <0x02040000>;
-	pinctrl-0 = <&i2c4_scl_default &i2c4_sda_default>;
-	pinctrl-names = "default";
 };
 
 &systick_timer {
