@@ -1,9 +1,6 @@
 # dts/bindings/i2c/omap-i2c.yaml
 
-title: TI OMAP I2C Controller
-
-description: |
-  This binding gives a representation of the I2C controller used in TI OMAP series SoCs.
+description: TI OMAP I2C Controller
 
 compatible: "ti,omap-i2c"
 
@@ -11,36 +8,19 @@ include: i2c-controller.yaml
 
 properties:
   reg:
-    description: |
-      Base address and size of the I2C registers.
+    description: Base address and size of the I2C registers.
     required: true
 
   clocks:
-    description: |
-      Phandles to the clock gate.
-    required: false
+    description: Phandles to the clock gate.
 
   interrupts:
-    description: |
-      Interrupt specifier for the I2C controller.
-    required: true
+    description: Interrupt specifier for the I2C controller.
 
   pinctrl-0:
     type: phandle-array
-    required: true
-    description: |
-      Pin control groups for this I2C instance.
+    description: Pin control groups for this I2C instance.
 
   pinctrl-names:
     type: string
-    required: true
-    description: |
-      Names for the pin control groups.
-
-required:
-  - reg
-  - interrupts
-  - pinctrl-0
-  - pinctrl-names
-
-additionalProperties: false
+    description: Names for the pin control groups.

@@ -39,10 +39,13 @@
 	};
 
 	i2c4: i2c {
-		compatible = "ti,o";
+		compatible = "ti,omap-i2c";
+		reg = <0x02040000 0x1000>;
 		status = "okay";
 		pinctrl-0 = <&i2c4_scl_default &i2c4_sda_default>;
 		pinctrl-names = "default";
+		#address-cells = <1>;  // Define the number of address cells
+		#size-cells = <0>;     // Define the number of size cells (if applicable)
 	};
 };
 
