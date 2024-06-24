@@ -38,8 +38,7 @@
 		zephyr,memory-region = "DRAM";
 	};
 
-	i2c4: i2c {
-		compatible = "ti,omap-i2c";
+	i2c4: i2c@2040000 {
 		reg = <0x02040000 0x1000>;
 		status = "okay";
 		pinctrl-0 = <&i2c4_scl_default &i2c4_sda_default>;
@@ -71,6 +70,9 @@
 		pinmux = <K3_PINMUX(0x14, PIN_INPUT, MUX_MODE_14)>;
 	};
 
+};
+
+&pinctrl {
 	i2c4_scl_default: i2c4_scl_default {
 		/* 0x1e0 is the address of padconfig register of p9.24 and 2 is mux mode */
 		pinmux = <K3_PINMUX(0x1e0, PIN_INPUT_PULLUP, MUX_MODE_2)>;
@@ -80,5 +82,5 @@
 		/* 0x1dc is the address of padconfig register of p9.26 and 2 is mux mode */
 		pinmux = <K3_PINMUX(0x1dc, PIN_INPUT_PULLUP, MUX_MODE_2)>;
 	};
-
 };
+

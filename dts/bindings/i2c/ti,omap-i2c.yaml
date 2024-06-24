@@ -18,7 +18,7 @@ properties:
     description: Interrupt specifier for the I2C controller.
 
   pinctrl-0:
-    type: phandle-array
+    type: phandle
     description: Pin control groups for this I2C instance.
 
   pinctrl-names:
