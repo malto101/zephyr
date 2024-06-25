@@ -12,23 +12,21 @@
 
 #include "memory.h"
 
-/* The "user_iram_end" represents the 2nd stage bootloader
- * "dram_seg" end address (that should not be overlapped).
- * If no bootloader is used we extend it to gain more user ram.
+/* The "user_iram_end" represents the last DRAM memory location
+ * that is occupied by the ROM code. Since the "iram_loader_seg"
+ * - which is the last memory the bootloader runs from - resides
+ * in the SRAM0 "cache" memory, the "user_iram_end" applies for\
+ * all build cases - Simple boot and the MCUboot application.
  */
-#ifdef CONFIG_ESP_SIMPLE_BOOT
-user_iram_end = SRAM1_DRAM_IRAM_CALC(SRAM1_DRAM_USABLE_START);
-#else
-user_iram_end = SRAM1_DRAM_IRAM_CALC(BOOTLOADER_DRAM_SEG_END);
-#endif
+user_iram_end = SRAM1_DRAM_IRAM_CALC(SRAM1_DRAM_USER_START);
 
 /* User available SRAM memory segments */
 user_iram_seg_org = (SRAM0_IRAM_START + SRAM0_CACHE_SIZE);
 user_iram_seg_len = user_iram_end - user_iram_seg_org;
-user_dram_seg_org = SRAM2_DRAM_USABLE_START;
-user_dram_seg_len = SRAM2_USABLE_SIZE;
-user_dram_2_seg_org = SRAM1_DRAM_USABLE_START;
-user_dram_2_seg_len = SRAM1_USABLE_SIZE;
+user_dram_seg_org = SRAM2_DRAM_USER_START;
+user_dram_seg_len = SRAM2_USER_SIZE;
+user_dram_2_seg_org = SRAM1_DRAM_USER_START;
+user_dram_2_seg_len = SRAM1_USER_SIZE;
 
 /* Aliases */
 #define FLASH_CODE_REGION   irom0_0_seg
@@ -106,7 +104,7 @@ PROVIDE(_memmap_vecbase_reset = 0x40000450);
 PROVIDE(_memmap_reset_vector = 0x40000400);
 
 #ifdef CONFIG_BT
-_heap_sentry = SRAM1_DRAM_USABLE_START;
+_heap_sentry = SRAM1_DRAM_USER_START;
 #else
 _heap_sentry = DRAM1_BT_SHM_BUFFERS_START; /* was 0x3ffe3f20; */
 #endif

@@ -259,15 +259,7 @@ int ead_update_ad(void);
 
 static bool bt_shell_ead_decrypt_scan;
 
-/**
- * @brief Compares two strings without case sensitivy
- *
- * @param substr The substring
- * @param str The string to find the substring in
- *
- * @return true if @substr is a substring of @p, else false
- */
-static bool is_substring(const char *substr, const char *str)
+bool is_substring(const char *substr, const char *str)
 {
 	const size_t str_len = strlen(str);
 	const size_t sub_str_len = strlen(substr);
@@ -2905,7 +2897,7 @@ static int cmd_read_local_tx_power(const struct shell *sh, size_t argc, char *ar
 		}
 		err = bt_conn_le_get_tx_power_level(default_conn, &tx_power_level);
 		if (err) {
-			shell_print(sh, "Commad returned error error %d", err);
+			shell_print(sh, "Command returned error error %d", err);
 			return err;
 		}
 		if (tx_power_level.current_level == unachievable_current_level) {
