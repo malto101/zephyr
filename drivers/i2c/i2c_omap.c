@@ -1,13 +1,12 @@
 #define DT_DRV_COMPAT ti_omap_i2c
 
-#include <errno.h>
+#include <zephyr/errno.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/irq.h>
-#include <i2c-priv.h>
-#include <i2c.h>
+#include <zephyr/drivers/i2c.h>
 
 LOG_MODULE_REGISTER(i2c_omap);
 
@@ -21,6 +20,10 @@ struct omap_i2c_device {
 	uint16_t sclhstate;
 	uint16_t pscstate;
 	uint32_t rev;
+	uint8_t *buf;
+	uint8_t *regs;
+	size_t buf_len;
+	uint32_t flags;
 	uint16_t westate;
 }
 
@@ -183,19 +186,6 @@ static void __omap_i2c_init(const struct device *dev)
 	}
 }
 
-static int omap_i2c_configure(const struct device *dev, uint32_t dev_config)
-{
-	// Configuration implementation
-	return 0;
-}
-
-static int omap_i2c_transfer(const struct device *dev, struct i2c_msg *msgs, uint8_t num_msgs,
-			     uint16_t addr)
-{
-	// Transfer implementation
-	return 0;
-}
-
 static int omap_i2c_init(const struct device *dev)
 {
 	struct omap_i2c_dev *omap = dev->data;
@@ -289,6 +279,20 @@ static int omap_i2c_init(const struct device *dev)
 	omap->sclhstate = sclh;
 
 	__omap_i2c_init(omap);
+
+	return 0;
+}
+
+static int omap_i2c_transmit_data(struct omap_i2c_dev *omap, uint8_t num_bytes, bool is_xdr)
+{
+	uint16_t w;
+
+	while (num_bytes--) {
+		w = *omap->buf++;
+		omap->buf_len--;
+
+		omap_i2c_write_reg(omap, OMAP_I2C_DATA_REG, w);
+	}
 
 	return 0;
 }

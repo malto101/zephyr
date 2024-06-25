@@ -38,14 +38,6 @@
 		zephyr,memory-region = "DRAM";
 	};
 
-	i2c4: i2c@2040000 {
-		reg = <0x02040000 0x1000>;
-		status = "okay";
-		pinctrl-0 = <&i2c4_scl_default &i2c4_sda_default>;
-		pinctrl-names = "default";
-		#address-cells = <1>;  // Define the number of address cells
-		#size-cells = <0>;     // Define the number of size cells (if applicable)
-	};
 };
 
 &uart2 {
@@ -53,6 +45,13 @@
 	pinctrl-0 = <&uart2_tx_default &uart2_rx_default>;
 	pinctrl-names = "default";
 	current-speed = <115200>;
+};
+
+&i2c4 {
+	status = "okay";
+	pinctrl-0 = <&i2c4_scl_default &i2c4_sda_default>;
+	pinctrl-names = "default";
+
 };
 
 &systick_timer {
@@ -69,10 +68,6 @@
 		/* 0x14 is address of padconfig register of p8.22 and 14 is mux mode */
 		pinmux = <K3_PINMUX(0x14, PIN_INPUT, MUX_MODE_14)>;
 	};
-
-};
-
-&pinctrl {
 	i2c4_scl_default: i2c4_scl_default {
 		/* 0x1e0 is the address of padconfig register of p9.24 and 2 is mux mode */
 		pinmux = <K3_PINMUX(0x1e0, PIN_INPUT_PULLUP, MUX_MODE_2)>;
@@ -82,5 +77,6 @@
 		/* 0x1dc is the address of padconfig register of p9.26 and 2 is mux mode */
 		pinmux = <K3_PINMUX(0x1dc, PIN_INPUT_PULLUP, MUX_MODE_2)>;
 	};
+
 };
 
