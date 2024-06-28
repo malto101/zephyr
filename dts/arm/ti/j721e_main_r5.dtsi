@@ -1,7 +1,7 @@
 /* Copyright (C) 2023 BeagleBoard.org Foundation
  * Copyright (C) 2023 S Prashanth
  * Copyright (c) 2024 Texas Instruments Incorporated
- *	Andrew Davis <afd@ti.com>
+ *    Andrew Davis <afd@ti.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -53,6 +53,16 @@
 		compatible = "ti,k3-pinctrl";
 		reg = <0x0011c000 0x2b4>;
 		status = "okay";
+	};
+
+	i2c6: i2c@2040000 {
+		compatible = "ti,omap-i2c";
+		reg = <0x02040000 0x1000>;
+		status = "okay";
+		#address-cells = <1>;  // Define the number of address cells
+		#size-cells = <0>;     // Define the number of size cells (if applicable)
+		status = "disabled";
+
 	};
 
 	uart1: uart@2810000 {
