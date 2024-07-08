@@ -1,7 +1,7 @@
 /* Copyright (C) 2023 BeagleBoard.org Foundation
  * Copyright (C) 2023 S Prashanth
  * Copyright (c) 2024 Texas Instruments Incorporated
- *	Andrew Davis <afd@ti.com>
+ *    	Andrew Davis <afd@ti.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -55,6 +55,18 @@
 		status = "okay";
 	};
 
+	i2c6: i2c@2060000 {
+		compatible = "ti,omap-i2c";
+		reg = <0x02060000 0x1000>;
+		interrupts = <0 187 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		clock-frequency = <100000>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+
+	};
+
 	uart1: uart@2810000 {
 		compatible = "ns16550";
 		reg = <0x02810000 0x100>;
@@ -77,13 +89,12 @@
 
 	mbox: mailbox0@29000000 {
 		compatible = "ti,omap-mailbox";
-		reg = <0x29000000 0x200>;
-		/* TODO: Find the right IRQ number */
-		interrupts = <0 4 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		reg = <0x31f81000 0x200>;
+		interrupts = <0 224 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 		interrupt-parent = <&vim>;
 		user_id = <2>;
 		#mbox-cells = <1>;
-		status = "okay";
+		status = "disabled";
 	};
 
 	systick_timer: timer@24c0000 {
