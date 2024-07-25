@@ -341,9 +341,12 @@ manifest:
       path: modules/lib/uoscore-uedhoc
     - name: zcbor
       revision: 75d088037eb237b18e7ec1f47c9ce494b9b95aab
-      path: modules/lib/zcbor
+      path: modules/lib/zcbor 
+    - name: remote-flash
+      path: scripts/west-commands.yml
 
   self:
     path: zephyr
     west-commands: scripts/west-commands.yml
     import: submanifests
+

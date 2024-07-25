@@ -76,3 +76,8 @@ west-commands:
       - name: simulate
         class: Simulate
         help: simulate board
+  - file: scripts/west_commands/remote_flash.py
+    commands:
+      - name: remoteflash
+        class: RemoteFlash
+        help: flash and run a binary on a remote board
