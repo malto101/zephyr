@@ -7,37 +7,44 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/irq.h>
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
 
 LOG_MODULE_REGISTER(omap_i2c, CONFIG_OMAP_I2C_LOG_LEVEL);
 
 typedef void (*init_func_t)(const struct device *dev);
 
+/**
+ * @brief Configuration structure for OMAP I2C driver
+ */
 struct i2c_omap_cfg {
-	mm_reg_t base;
-	int irq;
-	uint32_t speed;
-	init_func_t init_func;
-
+	mm_reg_t base;           /**< Base address of the I2C controller */
+	int irq;                 /**< IRQ number for the I2C controller */
+	uint32_t speed;          /**< Speed of the I2C bus */
+	init_func_t init_func;   /**< Initialization function for the I2C controller */
 };
 
+
+/**
+ * @brief Structure representing the data for the OMAP I2C driver.
+ */
 struct i2c_omap_data {
-	struct k_sem cmd_complete;
-	uint16_t cmd_err;
-	uint16_t iestate;
-	uint16_t scllstate;
-	uint16_t sclhstate;
-	uint16_t pscstate;
-	uint8_t *buf;
-	size_t buf_len;
-	uint32_t flags;
-	uint16_t westate;
-	uint8_t fifo_size;
-	unsigned receiver: 1;
-	unsigned b_hw: 1; /* bad h/w fixes */
-	unsigned bb_valid: 1;
-	uint32_t latency;
-	uint8_t threshold;
-	void (*set_mpu_wkup_lat)( init_func_t dev, uint32_t latency);
+	struct k_sem cmd_complete; /**< Semaphore for command completion */
+	uint16_t cmd_err; /**< Command error status */
+	uint16_t iestate; /**< I2C state */
+	uint16_t scllstate; /**< SCL low state */
+	uint16_t sclhstate; /**< SCL high state */
+	uint16_t pscstate; /**< PSC state */
+	uint8_t *buf; /**< Buffer for data transfer */
+	size_t buf_len; /**< Length of the buffer */
+	uint32_t flags; /**< Flags for I2C configuration */
+	uint16_t westate; /**< Wait state */
+	uint8_t fifo_size; /**< FIFO size */
+	unsigned receiver: 1; /**< Receiver flag */
+	unsigned b_hw: 1; /**< Bad hardware fixes flag */
+	unsigned bb_valid: 1; /**< BB valid flag */
+	uint32_t latency; /**< Latency */
+	uint8_t threshold; /**< Threshold */
+	void (*set_mpu_wkup_lat)(init_func_t dev, uint32_t latency); /**< Function pointer for setting MPU wakeup latency */
 };
 
 #define OMAP_I2C_FLAG_SIMPLE_CLOCK        BIT(1)
@@ -193,7 +200,16 @@ struct i2c_omap_data {
 
 static int omap_i2c_xfer_data(const struct device *dev);
 
-// Function writes a 16-bit value to a register in the I2C peripheral
+/**
+ * @brief Writes a 16-bit value to a register in the I2C peripheral.
+ *
+ * This function writes a 16-bit value to a specific register in the I2C peripheral.
+ *
+ * @param cfg Pointer to the configuration structure for the I2C peripheral.
+ * @param data Pointer to the data structure for the I2C peripheral.
+ * @param reg The register address to write the value to.
+ * @param val The 16-bit value to write to the register.
+ */
 static inline void omap_i2c_write_reg(const struct i2c_omap_cfg *cfg, struct i2c_omap_data *data,
 				      int reg, uint16_t val)
 {
@@ -202,16 +218,36 @@ static inline void omap_i2c_write_reg(const struct i2c_omap_cfg *cfg, struct i2c
 	sys_write16(val, write_reg);
 }
 
-// Function reads a 16-bit value from a register in the I2C peripheral
+/**
+ * @brief Reads a 16-bit value from a register in the I2C peripheral.
+ *
+ * This function reads a 16-bit value from a register in the I2C peripheral
+ *
+ * @param cfg Pointer to the I2C OMAP configuration structure.
+ * @param data Pointer to the I2C OMAP data structure.
+ * @param reg The register address to read from.
+ * @return The 16-bit value read from the register.
+ */
 static inline uint16_t omap_i2c_read_reg(const struct i2c_omap_cfg *cfg, struct i2c_omap_data *data, int reg)
 {
 	int read_reg = cfg->base + reg;
 	int read_reg_val = sys_read16(read_reg);
 	LOG_DBG("0x%x was read from register 0x%02x, config->base: %lx, reg= 0x%x",read_reg_val, read_reg, cfg->base, reg);
 	return read_reg_val;
-
 }
 
+/**
+ * @brief Initializes the OMAP I2C controller.
+ *
+ * This function initializes the OMAP I2C controller by performing the following steps:
+ * - Resets the I2C module by writing to the I2C_CON register.
+ * - Sets the SCL low and high time values by writing to the I2C_SCLL and I2C_SCLH registers.
+ * - Takes the I2C module out of reset by writing to the I2C_CON register.
+ * - Adds a delay to allow the bus to settle.
+ * - Conditionally writes to the IE register if iestate is set.
+ *
+ * @param dev Pointer to the device structure.
+ */
 static void __omap_i2c_init(const struct device *dev)
 {
 	LOG_INF("Initializing I2C controller");
@@ -219,20 +255,20 @@ static void __omap_i2c_init(const struct device *dev)
 	struct i2c_omap_data *data = dev->data;
 
 	// Write to I2C_CON to reset I2C module
-		LOG_DBG("Writing to I2C_CON register");
+	LOG_DBG("Writing to I2C_CON register");
 	omap_i2c_write_reg(cfg, data, I2C_CON, 0);
 
 	// Setup clock prescaler to obtain approx 96MHz I2C module clock:
-		LOG_DBG("Writing to I2C_PSC register");
+	LOG_DBG("Writing to I2C_PSC register");
 	omap_i2c_write_reg(cfg, data, I2C_PSC, data->pscstate);
 
 	// SCL low and high time values
-		LOG_DBG("Writing to I2C_SCLL and I2C_SCLH registers");
+	LOG_DBG("Writing to I2C_SCLL and I2C_SCLH registers");
 	omap_i2c_write_reg(cfg, data, I2C_SCLL, data->scllstate);
 	omap_i2c_write_reg(cfg, data, I2C_SCLH, data->sclhstate);
 
 	// Take the I2C module out of reset
-		LOG_DBG("Writing to I2C_CON register");
+	LOG_DBG("Writing to I2C_CON register");
 	omap_i2c_write_reg(cfg, data, I2C_CON, OMAP_I2C_CON_EN);
 
 	// Delay to allow the bus to settle
@@ -245,10 +281,19 @@ static void __omap_i2c_init(const struct device *dev)
 	}
 }
 
-// Soft reset the I2C controller
+/**
+ * @brief Soft reset the I2C controller
+ *
+ * This function performs a soft reset of the I2C controller by disabling it,
+ * waiting for the reset to complete, and then re-enabling it.
+ *
+ * @param dev Pointer to the device structure for the I2C controller
+ * @return 0 on success, negative error code on failure
+ */
 static int omap_i2c_reset(const struct device *dev)
 {
 	LOG_INF("Resetting I2C controller");
+
 	const struct i2c_omap_cfg *cfg = dev->config;
 	struct i2c_omap_data *data = dev->data;
 	uint64_t timeout;
@@ -257,7 +302,7 @@ static int omap_i2c_reset(const struct device *dev)
 	sysc = omap_i2c_read_reg(cfg, data, I2C_SYSC);
 
 	// Disable the I2C controller by clearing the enable bit in the CON register
-	omap_i2c_write_reg(cfg, data, I2C_CON,omap_i2c_read_reg(cfg, data, I2C_CON) & ~(OMAP_I2C_CON_EN));
+	omap_i2c_write_reg(cfg, data, I2C_CON, omap_i2c_read_reg(cfg, data, I2C_CON) & ~(OMAP_I2C_CON_EN));
 
 	// Set the timeout value to 1000 milliseconds from the current uptime
 	timeout = k_uptime_get() + OMAP_I2C_TIMEOUT;
@@ -269,10 +314,10 @@ static int omap_i2c_reset(const struct device *dev)
 	while (!(omap_i2c_read_reg(cfg, data, I2C_SYSS) & SYSS_RESETDONE_MASK)) {
 		// Check if the current uptime exceeds the timeout value
 		if (k_uptime_get() > timeout) {
-		// Log a warning message if the reset timeout occurs
-		LOG_WRN("timeout waiting for controller reset");
-		// Return a timeout error
-		return -ETIMEDOUT;
+			// Log a warning message if the reset timeout occurs
+			LOG_WRN("timeout waiting for controller reset");
+			// Return a timeout error
+			return -ETIMEDOUT;
 		}
 		// Sleep for 1 millisecond before polling again
 		k_msleep(1);
@@ -287,22 +332,33 @@ static int omap_i2c_reset(const struct device *dev)
 	// Return success
 	return 0;
 }
-
+/**
+ * @brief Initialize the OMAP I2C controller.
+ *
+ * This function initializes the OMAP I2C controller by configuring the speed, base address, and IRQ.
+ * It also initializes the command completion semaphore and sets the flags for simple clock configuration.
+ *
+ * @param dev Pointer to the device structure.
+ * @return 0 on success, negative error code on failure.
+ */
 static int omap_i2c_init(const struct device *dev)
 {
 	LOG_INF("Initializing I2C controller");
 	struct i2c_omap_data *data = dev->data;
 	const struct i2c_omap_cfg *cfg = dev->config;
+
 	// Print the speed, base, and irq
 	LOG_INF("Speed: %d Kbps", cfg->speed);
 	LOG_INF("Base: 0x%lx", cfg->base);
 	LOG_INF("IRQ: %d", cfg->irq);
+
 	k_sem_init(&data->cmd_complete, 0, 1);
 	data->flags |= OMAP_I2C_FLAG_SIMPLE_CLOCK;
-
 	uint16_t psc = 0, scll = 0, sclh = 0;
+	uint16_t fsscll = 0, fssclh = 0;
 	unsigned long fclk_rate = 96000000;
 	unsigned long internal_clk = 0;
+	unsigned long speed = cfg->speed;
 
 	data->westate = OMAP_I2C_WE_ALL;
 
@@ -323,14 +379,13 @@ static int omap_i2c_init(const struct device *dev)
 	// 	}
 	// }
 
-	// if (!(omap->flags & OMAP_I2C_FLAG_SIMPLE_CLOCK)) {
-	// 	if (omap->speed > 400 || omap->flags & OMAP_I2C_FLAG_FORCE_19200_INT_CLK) {
-	// 		internal_clk = 19200;
-	// 	} else if (omap->speed > 100) {
-	// 		internal_clk = 9600;
-	// 	} else {
-	// 		internal_clk = 4000;
-	// 	}
+	// if (!(data->flags & OMAP_I2C_FLAG_SIMPLE_CLOCK)) {
+		 if (cfg->speed > I2C_BITRATE_STANDARD) {
+			LOG_DBG("Speed > 100 Kbps");
+			internal_clk = 9600;
+		} else {
+			internal_clk = 4000;
+		}
 
 	// 	clk_dev = device_get_binding("CLOCK_CONTROL");
 	// 	if (!clk_dev) {
@@ -342,50 +397,49 @@ static int omap_i2c_init(const struct device *dev)
 	// 		LOG_ERR("Could not get fck rate");
 	// 		return -EIO;
 	// 	}
-	// 	fclk_rate /= 1000;
+		fclk_rate /= 1000;
+		speed /= 1000;
+		psc = fclk_rate / internal_clk;
+		psc = psc - 1;
 
-	// 	psc = fclk_rate / internal_clk;
-	// 	psc = psc - 1;
+		if (cfg->speed > I2C_BITRATE_FAST) {
+			LOG_ERR("Speed > 400 Kbps not supported");
+			// unsigned long scl;
 
-	// 	if (omap->speed > 400) {
-	// 		unsigned long scl;
+			// scl = internal_clk / 400;
+			// fsscll = scl - (scl / 3) - 7;
+			// fssclh = (scl / 3) - 5;
 
-	// 		scl = internal_clk / 400;
-	// 		fsscll = scl - (scl / 3) - 7;
-	// 		fssclh = (scl / 3) - 5;
+			// scl = fclk_rate / cfg->speed;
+			// hsscll = scl - (scl / 3) - 7;
+			// hssclh = (scl / 3) - 5;
+		} else {
+			LOG_DBG("Speed <= 400 Kbps");
+			fsscll = internal_clk / (speed * 2) - 7;
+			fssclh = internal_clk / (speed * 2) - 5;
+		}
 
-	// 		scl = fclk_rate / omap->speed;
-	// 		hsscll = scl - (scl / 3) - 7;
-	// 		hssclh = (scl / 3) - 5;
-	// 	} else if (omap->speed > 100) {
-	// 		unsigned long scl;
-
-	// 		scl = internal_clk / omap->speed;
-	// 		fsscll = scl - (scl / 3) - 7;
-	// 		fssclh = (scl / 3) - 5;
-	// 	} else {
-	// 		fsscll = internal_clk / (omap->speed * 2) - 7;
-	// 		fssclh = internal_clk / (omap->speed * 2) - 5;
-	// 	}
-	// 	scll = (hsscll << OMAP_I2C_SCLL_HSSCLL) | fsscll;
-	// 	sclh = (hssclh << OMAP_I2C_SCLH_HSSCLH) | fssclh;
+		scll = fsscll;
+		sclh = fssclh;
 	// } else {
+	// 	LOG_DBG("Simple clock configuration");
 	// 	fclk_rate /= (psc + 1) * 1000;
 	// 	if (psc > 2) {
 	// 		psc = 2;
 	// 	}
-	// 	scll = fclk_rate / (omap->speed * 2) - 7 + psc;
-	// 	sclh = fclk_rate / (omap->speed * 2) - 7 + psc;
+	// 	scll = fclk_rate / (speed * 2) - 7 + psc;
+	// 	sclh = fclk_rate / (speed * 2) - 7 + psc;
 	// }
+
 
 	// As there is no clock control module, we will be fixing it to 100 Kbps
 	// For simplicity, always set the internal clock to 4000 kHz for 100 kbps operation
-	internal_clk = 4000;
+	// internal_clk = 4000;
 
 	// Prescaler Calculation and clock periods for 100 kbps
-	psc = 23;  // 23
-	scll = 13;  //13
-	sclh = 15;  //15
+	// psc = 23;  // 23
+	// scll = 13;  //13
+	// sclh = 15;  //15
 
 	data->iestate = (OMAP_I2C_IE_XRDY | OMAP_I2C_IE_RRDY | OMAP_I2C_IE_ARDY | OMAP_I2C_IE_NACK |
 			 OMAP_I2C_IE_AL) |
@@ -394,6 +448,7 @@ static int omap_i2c_init(const struct device *dev)
 	data->pscstate = psc;
 	data->scllstate = scll;
 	data->sclhstate = sclh;
+	LOG_DBG("PSC: %d, SCLL: %d, SCLH: %d", psc, scll, sclh);
 
 	uint16_t rev_low = omap_i2c_read_reg(cfg, data, I2C_REVNB_LO);
 	uint16_t rev_high = omap_i2c_read_reg(cfg, data, I2C_REVNB_HI);
@@ -405,6 +460,15 @@ static int omap_i2c_init(const struct device *dev)
 	return 0;
 }
 
+/**
+ * @brief Interrupt service routine for the OMAP I2C driver.
+ *
+ * This function handles the interrupt generated by the I2C controller.
+ * It reads the status register and checks for any enabled events.
+ * If an event is detected, it performs the necessary actions to handle the interrupt.
+ *
+ * @param dev Pointer to the device structure.
+ */
 static void omap_i2c_isr(const struct device *dev)
 {
 	LOG_INF("I2C interrupt service routine");
@@ -418,69 +482,119 @@ static void omap_i2c_isr(const struct device *dev)
 
 	if (stat & mask) {
 		LOG_DBG("I2C event detected");
-	// Handle the interrupt (wake the thread, etc.)
+		// Handle the interrupt (wake the thread, etc.)
 	}
 }
-
+/**
+ * @brief Configures the I2C controller.
+ *
+ * This function configures the I2C controller based on the provided device configuration.
+ *
+ * @param dev The pointer to the I2C device structure.
+ * @param dev_config The device configuration.
+ *
+ * @retval 0 If successful.
+ * @retval -ENOTSUP If the I2C controller does not support the requested configuration.
+ */
 static int omap_i2c_configure(const struct device *dev, uint32_t dev_config)
 {
 	LOG_INF("Configuring I2C controller");
 
-	if ((dev_config & I2C_MODE_CONTROLLER) != I2C_MODE_CONTROLLER)	
+	// const struct i2c_omap_cfg *cfg = dev->config;
+
+	if ((dev_config & I2C_MODE_CONTROLLER) != I2C_MODE_CONTROLLER)
 	{
 		LOG_DBG("I2C controller does not support slave mode");
 		return -ENOTSUP;
 	}
+
 	if ((dev_config & I2C_MSG_ADDR_10_BITS) != I2C_MSG_ADDR_10_BITS)
 	{
-	LOG_DBG("I2C controller does not support 10-bit addressing");
-	return -ENOTSUP;
+		LOG_DBG("I2C controller does not support 10-bit addressing");
+		return -ENOTSUP;
 	}
-	switch(I2C_SPEED_GET(dev_config))
+
+	switch (I2C_SPEED_GET(dev_config))
 	{
 		case I2C_SPEED_STANDARD:
 			/* Use recommended value for 100 kHz bus */
 			LOG_DBG("I2C controller Speed: I2C_SPEED_STANDARD(100 Kbps)");
 			break;
+		case I2C_SPEED_FAST:
+			LOG_DBG("I2C controller Speed: I2C_SPEED_FAST(400 Kbps)");
+			break;
 		default:
 			return -ENOTSUP;
 	}
+
 	omap_i2c_reset(dev);
+	__omap_i2c_init(dev);
+
 	return 0;
 }
 
-static int omap_i2c_transmit_data(const struct device *dev, uint8_t num_bytes, bool is_xdr)
+/**
+ * @brief Transmit data over I2C bus
+ *
+ * This function transmits a specified number of bytes over the I2C bus.
+ *
+ * @param dev Pointer to the I2C device structure
+ * @param num_bytes Number of bytes to transmit
+ * @return 0 on success, negative error code on failure
+ */
+static int omap_i2c_transmit_data(const struct device *dev, uint8_t num_bytes)
 {
 	LOG_INF("Transmitting %d bytes", num_bytes);
 	const struct i2c_omap_cfg *cfg = dev->config;
 	struct i2c_omap_data *data = dev->data;
-	uint16_t w;
+	uint16_t buffer_data;
 
 	while (num_bytes--) {
-		LOG_DBG("Transmitting byte");
-		w = *data->buf++;
+		buffer_data = *data->buf++;
 		data->buf_len--;
 
-		omap_i2c_write_reg(cfg, data, I2C_DATA, w);
+		omap_i2c_write_reg(cfg, data, I2C_DATA, buffer_data);
 	}
 
 	return 0;
 }
 
-static void omap_i2c_receive_data(const struct device *dev, uint8_t num_bytes, bool is_rdr)
+/**
+ * @brief Receive data from the I2C bus.
+ *
+ * This function receives a specified number of bytes from the I2C bus.
+ *
+ * @param dev The I2C device structure.
+ * @param num_bytes The number of bytes to receive.
+ */
+static void omap_i2c_receive_data(const struct device *dev, uint8_t num_bytes)
 {
 	LOG_INF("Receiving %d bytes", num_bytes);
 	const struct i2c_omap_cfg *cfg = dev->config;
 	struct i2c_omap_data *data = dev->data;
-	uint16_t w;
+	uint16_t buffer_data;
 	while (num_bytes--) {
 		LOG_DBG("Receiving byte");
-		w = omap_i2c_read_reg(cfg, data, I2C_DATA);
-		*data->buf++ = w >> 8;
+		buffer_data = omap_i2c_read_reg(cfg, data, I2C_DATA);
+		*data->buf++ = buffer_data >> 8;
 		data->buf_len--;
 	}
 }
 
+/**
+ * @brief Resizes the FIFO for the I2C controller.
+ *
+ * This function resizes the FIFO for either the RX or TX direction based on the specified size.
+ * It also sets up the notification threshold based on the message size.
+ * If the FIFO is not supported, the function returns without making any changes.
+ * After resizing the FIFO, it calculates the wakeup latency constraint for the MPU (Microprocessor Unit).
+ *
+ * @param dev The I2C device structure.
+ * @param size The size of the FIFO to be set.
+ * @param is_rx A boolean indicating whether the FIFO is for RX (true) or TX (false).
+ *
+ * @return None.
+ */
 static void omap_i2c_resize_fifo(const struct device *dev, uint8_t size, bool is_rx)
 {
 	LOG_INF("Resizing FIFO for %s %d bytes", is_rx ? "RX" : "TX", size);
@@ -507,8 +621,9 @@ static void omap_i2c_resize_fifo(const struct device *dev, uint8_t size, bool is
 		buf &= ~0x3f;
 		buf |= (data->threshold - 1) | OMAP_I2C_BUF_TXFIF_CLR;
 	}
-		LOG_DBG("Writing buffer value: 0x%04x", buf);
+	LOG_DBG("Writing buffer value: 0x%04x", buf);
 	omap_i2c_write_reg(cfg, data, I2C_BUF, buf);
+	data->fifo_size = buf;
 
 	// Calculate wakeup latency constraint for MPU
 	if (data->set_mpu_wkup_lat != NULL) {
@@ -517,8 +632,15 @@ static void omap_i2c_resize_fifo(const struct device *dev, uint8_t size, bool is
 		data->set_mpu_wkup_lat(cfg->init_func, data->latency);
 	}
 }
-
-// function waits for an I2C event by polling the status register. It checks the status
+/**
+ * @brief Waits for an I2C event by polling the status register.
+ *
+ * This function waits for an I2C event by continuously polling the status register
+ * until an event occurs or a maximum number of attempts is reached.
+ *
+ * @param dev Pointer to the I2C device structure.
+ * @return 0 if an event occurs, or -EAGAIN if the maximum number of attempts is reached.
+ */
 static int omap_i2c_wait(const struct device *dev)
 {
 	LOG_INF("Waiting for I2C event");
@@ -537,6 +659,16 @@ static int omap_i2c_wait(const struct device *dev)
 	return -EAGAIN;
 }
 
+/**
+ * @brief Get the status of the SCL line for the OMAP I2C controller.
+ *
+ * This function reads the value of the SCL line from the I2C_SYSTEST register
+ * and returns the status of the SCL line.
+ *
+ * @param dev Pointer to the device structure for the OMAP I2C controller.
+ * @return The status of the SCL line. Returns a non-zero value if the SCL line
+ *         is functional, and zero otherwise.
+ */
 
 static int __maybe_unused omap_i2c_get_scl(const struct device *dev)
 {
@@ -549,8 +681,18 @@ static int __maybe_unused omap_i2c_get_scl(const struct device *dev)
 	return reg & OMAP_I2C_SYSTEST_SCL_I_FUNC;
 }
 
+/**
+ * @brief Get the status of the SDA (Serial Data Line) pin for the OMAP I2C controller.
+ *
+ * This function retrieves the status of the SDA pin for the specified I2C device.
+ *
+ * @param dev Pointer to the device structure.
+ * @return The status of the SDA pin. Returns a non-zero value if the SDA pin is functional,
+ *         and returns zero if the SDA pin is not functional.
+ */
 static int __maybe_unused omap_i2c_get_sda(const struct device *dev)
 {
+	
 	struct i2c_omap_data *data = dev->data;
 	const struct i2c_omap_cfg *cfg = dev->config;
 	uint32_t reg;
@@ -560,18 +702,26 @@ static int __maybe_unused omap_i2c_get_sda(const struct device *dev)
 	return reg & OMAP_I2C_SYSTEST_SDA_I_FUNC;
 }
 
-/*
- * Try bus recovery, but only if SDA is actually low.
+/**
+ * @brief Try bus recovery, but only if SDA is actually low.
+ *
+ * This function attempts to recover the I2C bus if it is in a stuck state.
+ * It checks the status of the SDA and SCL lines using the I2C_SYSTEST register.
+ * If SDA is not stuck low, the bus is considered to be already fine and no recovery is needed.
+ * If SCL is stuck low, recovery would not fix the issue and an error is returned.
+ * Otherwise, the function calls the i2c_recover_bus() function to perform the bus recovery.
+ *
+ * @param dev Pointer to the I2C device structure.
+ * @return 0 if the bus is already fine or recovery is successful, negative error code otherwise.
  */
-static int __maybe_unused omap_i2c_recover_bus(const struct device *dev)
+static int omap_i2c_recover_bus(const struct device *dev)
 {
 	struct i2c_omap_data *data = dev->data;
 	const struct i2c_omap_cfg *cfg = dev->config;
 	uint16_t systest;
 
 	systest = omap_i2c_read_reg(cfg, data, I2C_SYSTEST);
-	if ((systest & OMAP_I2C_SYSTEST_SCL_I_FUNC) &&
-	    (systest & OMAP_I2C_SYSTEST_SDA_I_FUNC))
+	if ((systest & OMAP_I2C_SYSTEST_SCL_I_FUNC) && (systest & OMAP_I2C_SYSTEST_SDA_I_FUNC))
 		{
 			LOG_DBG("SDA is not stuck low, cannot recover");
 		return 0; /* bus seems to already be fine */
@@ -584,6 +734,17 @@ static int __maybe_unused omap_i2c_recover_bus(const struct device *dev)
 	return i2c_recover_bus(dev);
 }
 
+/**
+ * @brief Wait for the I2C bus to become idle.
+ *
+ * This function waits for the I2C bus to become idle by checking the BUS
+ * busy status bit in the I2C status register. If the bus remains busy for
+ * longer than the specified timeout, the function attempts to recover the
+ * bus by calling i2c_recover_bus().
+ *
+ * @param dev Pointer to the I2C device structure.
+ * @return 0 on success, negative errno code on failure.
+ */
 static int omap_i2c_wait_for_bb(const struct device *dev)
 {
 	LOG_INF("Waiting for BUS busy to clear");
@@ -663,17 +824,18 @@ static int __maybe_unused omap_i2c_wait_for_bb_valid(const struct device *dev)
 	if ((systest & OMAP_I2C_SYSTEST_SCL_I_FUNC) &&
 		(systest & OMAP_I2C_SYSTEST_SDA_I_FUNC)) {
 		if (!bus_free) {
-				LOG_DBG("Bus free detected");
-		bus_free_timeout = k_uptime_get_32() + OMAP_I2C_BUS_FREE_TIMEOUT;
-		bus_free = 1;
+			LOG_DBG("Bus free detected");
+			bus_free_timeout = k_uptime_get_32() + OMAP_I2C_BUS_FREE_TIMEOUT;
+			bus_free = 1;
 		}
 
 		// SDA and SCL lines were high for 10 ms without bus activity detected.
 		// The bus is free. Consider BB-bit value is valid.
-		if (k_uptime_get_32() > bus_free_timeout)
-				LOG_DBG("Bus free timeout");
-		break;
-	} else {
+		if (k_uptime_get_32() > bus_free_timeout) {
+			LOG_DBG("Bus free timeout");
+			break;
+		}
+		} else {
 			// SDA or SCL line is low. The bus is busy. Reset the bus free timeout.
 			LOG_DBG("Resetting bus free timeout");
 		bus_free = 0;
@@ -693,17 +855,29 @@ static int __maybe_unused omap_i2c_wait_for_bb_valid(const struct device *dev)
 	return 0;
 }
 
-//low level master R/W transactions
-
+/**
+ * @brief Performs a low-level master read/write transaction on the I2C bus.
+ *
+ * This function is responsible for handling the low-level details of an I2C transfer,
+ * including setting up the target device address, buffer length, control register settings,
+ * and handling various error conditions. It supports both polling and non-polling modes.
+ *
+ * @param dev The I2C device structure.
+ * @param msg Pointer to the I2C message structure containing the transfer details.
+ * @param stop Flag indicating whether to send a STOP condition after the transfer.
+ * @param polling Flag indicating whether to use polling mode for the transfer.
+ * @param addr The target device address.
+ * @return 0 on success, negative error code on failure.
+ */
 static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, int stop, bool polling,
-                             uint16_t addr)
+							 uint16_t addr)
 {
 	LOG_INF("Starting I2C transfer");
 	const struct i2c_omap_cfg *cfg = dev->config;
 	struct i2c_omap_data *data = dev->data;
 
 	unsigned long time_left;
-	uint16_t w;
+	uint16_t control_reg;
 	int ret;
 
 	LOG_DBG("addr: 0x%04x, len: %d, flags: 0x%x, stop: %d", addr, msg->len, msg->flags, stop);
@@ -711,7 +885,7 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, int 
 	data->receiver = !!(msg->flags & I2C_MSG_READ);
 	omap_i2c_resize_fifo(dev, msg->len, data->receiver);
 	// Write target device address to I2C slave address register
-	LOG_DBG("Writing target device address to I2C slave address register");
+	LOG_DBG("Writing target device address 0x%x to I2C slave address register", addr);
 	omap_i2c_write_reg(cfg, data, I2C_SA, addr);
 	// Set buffer and buffer length for the message
 	data->buf = msg->buf;
@@ -722,14 +896,14 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, int 
 	compiler_barrier();
 
 	// Write buffer length to I2C count register
-	LOG_DBG("Writing buffer length to I2C count register");
-	omap_i2c_write_reg(cfg, data, I2C_CNT, data->buf_len);
 
+	omap_i2c_write_reg(cfg, data, I2C_CNT, data->buf_len);
+	LOG_DBG("Writing buffer length %d to I2C count register", data->buf_len);
 	// Clear FIFO buffers in the I2C controller
 	LOG_DBG("Clearing FIFO buffers in the I2C controller");
-	w = omap_i2c_read_reg(cfg, data, I2C_BUF);
-	w |= OMAP_I2C_BUF_RXFIF_CLR | OMAP_I2C_BUF_TXFIF_CLR;
-	omap_i2c_write_reg(cfg, data, I2C_BUF, w);
+	control_reg = omap_i2c_read_reg(cfg, data, I2C_BUF);
+	control_reg |= OMAP_I2C_BUF_RXFIF_CLR | OMAP_I2C_BUF_TXFIF_CLR;
+	omap_i2c_write_reg(cfg, data, I2C_BUF, control_reg);
 
 	// If not using polling, reset command completion semaphore
 	if (!polling) {
@@ -740,12 +914,12 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, int 
 	// Reset command error flag
 	data->cmd_err = 0;
 	// Configure control register bits for I2C operation
-	w = OMAP_I2C_CON_EN | OMAP_I2C_CON_MST | OMAP_I2C_CON_STT;
+	control_reg = OMAP_I2C_CON_EN | OMAP_I2C_CON_MST | OMAP_I2C_CON_STT;
 
 	// Set high-speed mode if configured speed is greater than 400 kHz
-	if (cfg->speed > 400000) {
+	if (cfg->speed > I2C_BITRATE_FAST) {
 		LOG_DBG("Setting high-speed mode");
-		w |= OMAP_I2C_CON_OPMODE_HS;
+		control_reg |= OMAP_I2C_CON_OPMODE_HS;
 	}
 	// Set STOP condition flag if specified in message flags
 	if (msg->flags & I2C_MSG_STOP) {
@@ -755,16 +929,16 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, int 
 	// Set TRX (transmit/receive) flag based on message direction
 	if (!(msg->flags & I2C_MSG_READ)) {
 		LOG_DBG("Setting TRX flag for transmit");
-		w |= OMAP_I2C_CON_TRX;
+		control_reg |= OMAP_I2C_CON_TRX;
 	}
 	// Set STOP condition flag in non-hardware mode with stop condition specified
 	if (!data->b_hw && stop) {
 		LOG_DBG("Setting stop condition in non-hardware mode");
-		w |= OMAP_I2C_CON_STP;
+		control_reg |= OMAP_I2C_CON_STP;
 	}
 	// Write control register settings to I2C control register
 		LOG_DBG("Writing control register settings to I2C control register");
-		omap_i2c_write_reg(cfg, data, I2C_CON, w);
+		omap_i2c_write_reg(cfg, data, I2C_CON, control_reg);
 
 	// Handle specific cases for non-hardware mode with stop condition
 	if (data->b_hw && stop) {
@@ -781,9 +955,9 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, int 
 			}
 			k_sleep(K_MSEC(1)); // Yield to avoid busy looping
 		}
-	w |= OMAP_I2C_CON_STP;
-	w &= OMAP_I2C_CON_STT;
-	omap_i2c_write_reg(cfg, data, I2C_CON, w);
+	control_reg |= OMAP_I2C_CON_STP;
+	control_reg &= OMAP_I2C_CON_STT;
+	omap_i2c_write_reg(cfg, data, I2C_CON, control_reg);
 	}
 
 	// If not using polling, wait for completion of command
@@ -799,14 +973,12 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, int 
 	} else {
 	// Polling mode: loop until data transfer is complete
 		LOG_DBG("Polling mode");
-		for (time_left = 5; time_left; time_left--) {
-			ret = omap_i2c_wait(dev);
-			if (ret == -EAGAIN)
-				continue;
+		do {
+			omap_i2c_wait(dev);
 			ret = omap_i2c_xfer_data(dev);
-			if (ret == -EAGAIN)
-				break;
-		}
+		} while (ret == -EAGAIN);
+		time_left = !ret;
+		
 	}
 	// Handle timeout scenario: reset and re-initialize I2C controller
 	if (time_left == 0) {
@@ -841,16 +1013,25 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, int 
 			LOG_DBG("NACK received");
 			return 0;
 		}
-		w = omap_i2c_read_reg(cfg, data, I2C_CON);
-		w |= OMAP_I2C_CON_STP;
-		omap_i2c_write_reg(cfg, data, I2C_CON, w);
+		control_reg = omap_i2c_read_reg(cfg, data, I2C_CON);
+		control_reg |= OMAP_I2C_CON_STP;
+		omap_i2c_write_reg(cfg, data, I2C_CON, control_reg);
 		return -EREMOTE;
 	}
 	LOG_DBG("Exiting at line %d", __LINE__);
 	return -EIO; // General I/O error if none of the specific error conditions match
 }
 
-// Function writes a given status value to the I2C status register to acknowledge or clear specific status bits.
+/**
+ * @brief Writes a given status value to the I2C status register to acknowledge or clear specific status bits.
+ *
+ * This function acknowledges or clears specific status bits in the I2C status register by writing the provided status value.
+ *
+ * @param dev Pointer to the device structure for the I2C controller.
+ * @param stat The status value to be written to the I2C status register.
+ *
+ * @return None.
+ */
 static inline void omap_i2c_ack_stat(const struct device *dev, uint16_t stat)
 {
 	LOG_INF("Acknowledge status 0x%04x", stat);
@@ -859,8 +1040,17 @@ static inline void omap_i2c_ack_stat(const struct device *dev, uint16_t stat)
 	omap_i2c_write_reg(cfg, data, I2C_STAT, stat);
 }
 
-// Function Handles data transfer for the I2C controller
-
+/**
+ * @brief Handles data transfer for the I2C controller.
+ *
+ * This function handles the data transfer for the I2C controller. It reads the interrupt enable bits and status register,
+ * masks the status register with the interrupt enable bits, and handles specific status bits and errors. It also handles
+ * the receive and transmit data ready status, receive and transmit ready status, receive overrun error, and transmit
+ * underflow error. The function continues processing while there are status bits set and returns the command error.
+ *
+ * @param dev The pointer to the I2C device structure.
+ * @return The command error.
+ */
 static int omap_i2c_xfer_data(const struct device *dev)
 {
 	LOG_INF("Handling I2C data transfer");
@@ -939,8 +1129,9 @@ static int omap_i2c_xfer_data(const struct device *dev)
 			// If FIFO size is set, determine the number of bytes to read
 			if (data->fifo_size) {
 			num_bytes = data->buf_len;
+			LOG_DBG("Receiving %d bytes", num_bytes);
 			}
-			omap_i2c_receive_data(dev, num_bytes, true); // Receive data
+			omap_i2c_receive_data(dev, num_bytes); // Receive data
 			omap_i2c_ack_stat(dev, OMAP_I2C_STAT_RDR); // Acknowledge the RDR status
 			continue;
 		}
@@ -954,7 +1145,7 @@ static int omap_i2c_xfer_data(const struct device *dev)
 			num_bytes = data->threshold;
 			}
 
-			omap_i2c_receive_data(dev, num_bytes, false); // Receive data
+			omap_i2c_receive_data(dev, num_bytes); // Receive data
 			omap_i2c_ack_stat(dev, OMAP_I2C_STAT_RRDY); // Acknowledge the RRDY status
 			continue;
 		}
@@ -966,10 +1157,11 @@ static int omap_i2c_xfer_data(const struct device *dev)
 			LOG_DBG("Transmit data ready status");
 			// If FIFO size is set, determine the number of bytes to transmit
 			if (data->fifo_size) {
-			num_bytes = data->buf_len;
+				num_bytes = data->buf_len;
+				LOG_DBG("Transmitting %d bytes", num_bytes);
 			}
 
-			ret = omap_i2c_transmit_data(dev, num_bytes, true); // Transmit data
+			ret = omap_i2c_transmit_data(dev, num_bytes); // Transmit data
 			if (ret < 0) {
 			break;
 			}
@@ -985,10 +1177,11 @@ static int omap_i2c_xfer_data(const struct device *dev)
 			LOG_DBG("Transmit ready status");
 			// If threshold is set, determine the number of bytes to transmit
 			if (data->threshold) {
-			num_bytes = data->threshold;
+				LOG_DBG("Transmitting %d bytes", data->threshold);
+				num_bytes = data->threshold;
 			}
 
-			ret = omap_i2c_transmit_data(dev, num_bytes, false); // Transmit data
+			ret = omap_i2c_transmit_data(dev, num_bytes); // Transmit data
 			if (ret < 0) {
 			break;
 			}
@@ -1017,7 +1210,22 @@ static int omap_i2c_xfer_data(const struct device *dev)
 	return data->cmd_err; 
 }
 
-//Prepare controller for a transaction and call omap_i2c_xfer_msg to do the work during IRQ processing
+/**
+ * @brief Prepare controller for a transaction and call omap_i2c_xfer_msg to do the work during IRQ processing.
+ *
+ * This function prepares the I2C controller for a transaction and then calls omap_i2c_xfer_msg to perform the actual data transfer.
+ * It waits for the bus busy condition to clear, sets the MPU wakeup latency if available, and then transfers each message in the array.
+ * If a message transfer fails, the function exits the loop and returns the error code.
+ * If all message transfers are successful, the function returns the number of messages transferred and marks the I2C transfer as completed.
+ * If an error occurs during the bus busy wait, the function returns the error code and marks the I2C transfer as completed.
+ *
+ * @param dev The I2C device structure.
+ * @param msg An array of I2C messages to be transferred.
+ * @param num The number of messages in the array.
+ * @param polling Flag indicating whether to use polling mode or not.
+ * @param addr The I2C slave address.
+ * @return 0 if successful, otherwise a negative error code.
+ */
 static int omap_i2c_xfer_common(const struct device *dev, struct i2c_msg msg[], int num,
 				bool polling, uint16_t addr)
 {
@@ -1072,14 +1280,39 @@ out:
 	return r;
 }
 
-// Transfer I2C messages using interrupt-driven mode
+/**
+ * @brief Transfer I2C messages using interrupt-driven mode.
+ *
+ * This function transfers I2C messages using interrupt-driven mode. It takes an array of I2C messages,
+ * the number of messages in the array, and the address of the I2C device. It calls the omap_i2c_xfer_common()
+ * function to perform the actual transfer.
+ *
+ * @param dev The I2C device.
+ * @param msgs An array of I2C messages.
+ * @param num_msgs The number of messages in the array.
+ * @param addr The address of the I2C device.
+ * @return 0 on success, negative errno code on failure.
+ */
 static int __maybe_unused omap_i2c_transfer_irq(const struct device *dev, struct i2c_msg msgs[], uint8_t num_msgs, uint16_t addr)
 {
 	LOG_INF("Transfering I2C messages using IRQ");
 	return omap_i2c_xfer_common(dev, msgs, num_msgs, false, addr);
 }
 
-// Transfer I2C messages using polling mode
+/**
+ * @brief Transfer I2C messages using polling mode.
+ *
+ * This function transfers I2C messages using polling mode. It takes an array of
+ * I2C messages, the number of messages in the array, and the address of the
+ * I2C device. It logs a message indicating the transfer mode and calls the
+ * omap_i2c_xfer_common() function to perform the actual transfer.
+ *
+ * @param dev The I2C device.
+ * @param msgs An array of I2C messages.
+ * @param num_msgs The number of messages in the array.
+ * @param addr The address of the I2C device.
+ * @return 0 on success, negative errno code on failure.
+ */
 static int omap_i2c_transfer_polling(const struct device *dev, struct i2c_msg msgs[], uint8_t num_msgs, uint16_t addr)
 {
 	LOG_INF("Transfering I2C messages using Polling");
@@ -1089,6 +1322,7 @@ static int omap_i2c_transfer_polling(const struct device *dev, struct i2c_msg ms
 static const struct i2c_driver_api omap_i2c_api = {
 	.transfer = omap_i2c_transfer_polling,
 	.configure = omap_i2c_configure,
+	.recover_bus = omap_i2c_recover_bus,
 };
 
 #define I2C_OMAP_INIT(inst)																\
