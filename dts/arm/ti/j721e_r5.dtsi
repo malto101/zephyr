@@ -10,6 +10,7 @@
 #include <freq.h>
 #include <arm/armv7-r.dtsi>
 #include <zephyr/dt-bindings/interrupt-controller/ti-vim.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
 
 / {
 	#address-cells = <1>;
@@ -60,7 +61,7 @@
 		reg = <0x02060000 0x1000>;
 		interrupts = <0 187 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 		interrupt-parent = <&vim>;
-		clock-frequency = <100000>;
+		clock-frequency = <I2C_BITRATE_STANDARD>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 		status = "disabled";
