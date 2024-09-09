@@ -714,25 +714,47 @@ static int __maybe_unused omap_i2c_get_sda(const struct device *dev)
  * @param dev Pointer to the I2C device structure.
  * @return 0 if the bus is already fine or recovery is successful, negative error code otherwise.
  */
-static int omap_i2c_recover_bus(const struct device *dev)
-{
-	struct i2c_omap_data *data = dev->data;
-	const struct i2c_omap_cfg *cfg = dev->config;
-	uint16_t systest;
+// static int omap_i2c_recover_bus(const struct device *dev)
+// {
+// 	struct i2c_omap_data *data = dev->data;
+// 	const struct i2c_omap_cfg *cfg = dev->config;
+// 	uint16_t systest, reg;
 
-	systest = omap_i2c_read_reg(cfg, data, I2C_SYSTEST);
-	if ((systest & OMAP_I2C_SYSTEST_SCL_I_FUNC) && (systest & OMAP_I2C_SYSTEST_SDA_I_FUNC))
-		{
-			LOG_DBG("SDA is not stuck low, cannot recover");
-		return 0; /* bus seems to already be fine */
-		}
-	if (!(systest & OMAP_I2C_SYSTEST_SCL_I_FUNC))
-		{
-			LOG_DBG("SCL is stuck low, cannot recover");
-			return -EBUSY; /* recovery would not fix SCL */
-		}
-	return i2c_recover_bus(dev);
-}
+// 	systest = omap_i2c_read_reg(cfg, data, I2C_SYSTEST);
+// 	if ((systest & OMAP_I2C_SYSTEST_SCL_I_FUNC) && (systest & OMAP_I2C_SYSTEST_SDA_I_FUNC))
+// 		{
+// 			LOG_DBG("SDA is not stuck low, cannot recover");
+// 		return 0; /* bus seems to already be fine */
+// 		}
+// 	if (!(systest & OMAP_I2C_SYSTEST_SCL_I_FUNC))
+// 		{
+// 			LOG_DBG("SCL is stuck low, cannot recover");
+// 			return -EBUSY; /* recovery would not fix SCL */
+// 		}
+// 	LOG_DBG("Recovering I2C bus");
+
+
+// 	reg = omap_i2c_read_reg(cfg, data, I2C_SYSTEST);
+// 	reg |= OMAP_I2C_SYSTEST_ST_EN;
+// 	reg |= 3<< OMAP_I2C_SYSTEST_TMODE_SHIFT;
+// 	reg |= OMAP_I2C_SYSTEST_SCL_O;
+// 	reg |= OMAP_I2C_SYSTEST_SDA_O;
+// 	omap_i2c_write_reg(cfg, data, I2C_SYSTEST, reg);
+
+// 	reg = omap_i2c_read_reg(cfg, data, I2C_CON);
+// 	reg |= OMAP_I2C_SYSTEST_ST_EN;
+// 	reg |= 3<< OMAP_I2C_SYSTEST_TMODE_SHIFT;
+// 	reg |= OMAP_I2C_SYSTEST_SCL_O;
+// 	reg |= OMAP_I2C_SYSTEST_SDA_O;
+
+
+// 	omap_i2c_write_reg(cfg, data, I2C_SYSTEST, reg);	
+// 	reg &= OMAP_I2C_SYSTEST_ST_EN;
+// 	reg &= OMAP_I2C_SYSTEST_TMODE_SHIFT;
+// 	reg &= OMAP_I2C_SYSTEST_SCL_O;
+// 	reg &= OMAP_I2C_SYSTEST_SDA_O;
+// 	omap_i2c_write_reg(cfg, data, I2C_SYSTEST, reg);
+// }
 
 /**
  * @brief Wait for the I2C bus to become idle.
