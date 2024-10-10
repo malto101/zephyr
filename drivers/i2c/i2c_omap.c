@@ -31,7 +31,7 @@ struct i2c_omap_cfg {
 struct i2c_omap_data {
 	struct k_sem cmd_complete; 		/**< Semaphore for command completion */
 	uint16_t cmd_err; 				/**< Command error status */
-	uint16_t iestate; 				/**< I2C state */
+	uint16_t iestate; 				/**< Saved interupt reg */
 	uint16_t scllstate; 			/**< SCL low state */
 	uint16_t sclhstate; 			/**< SCL high state */
 	uint16_t pscstate; 				/**< PSC state */
@@ -41,15 +41,9 @@ struct i2c_omap_data {
 	uint16_t westate; 				/**< Wait state */
 	uint8_t fifo_size; 				/**< FIFO size */
 	unsigned receiver: 1; 			/**< Receiver flag */
-	unsigned b_hw: 1; 				/**< Bad hardware fixes flag */
 	unsigned bb_valid: 1; 			/**< BB valid flag */
-	uint32_t latency; 				/**< Latency */
 	uint8_t threshold; 				/**< Threshold */
-	void (*set_mpu_wkup_lat)(init_func_t dev, uint32_t latency); /**< Function pointer for setting MPU wakeup latency */
 };
-
-#define OMAP_I2C_FLAG_SIMPLE_CLOCK        BIT(1)
-#define OMAP_I2C_FLAG_FORCE_19200_INT_CLK BIT(6)
 
 /* I2C Interrupt Enable Register (OMAP_I2C_IE): */
 #define OMAP_I2C_IE_XDR  BIT(14) /* TX Buffer drain int enable */
@@ -192,6 +186,7 @@ struct i2c_omap_data {
 #define I2C_ACTOA           0xd0
 #define I2C_SBLOCK          0xd4
 
+#define I2C_SPEED(inst) DT_PROP(DT_INST_PHANDLE(inst, clocks), clock_frequency)
 
 /* Define the bus free timeout */
 #define OMAP_I2C_BUS_FREE_TIMEOUT 10U
@@ -258,7 +253,6 @@ static void __omap_i2c_init(const struct device *dev)
 	LOG_DBG("Writing to I2C_CON register");
 	omap_i2c_write_reg(cfg, I2C_CON, 0);
 
-	// Setup clock prescaler to obtain approx 96MHz I2C module clock:
 	LOG_DBG("Writing to I2C_PSC register");
 	omap_i2c_write_reg(cfg, I2C_PSC, data->pscstate);
 
@@ -332,6 +326,87 @@ static int omap_i2c_reset(const struct device *dev)
 	// Return success
 	return 0;
 }
+
+/**
+ * @brief Set the speed of the I2C controller.
+ *
+ * This function sets the speed of the I2C controller based on the provided speed value.
+ * It calculates the prescaler divisor and the values for the SCLL and SCLH registers
+ * based on the speed value. It also handles different speed modes such as Standard mode,
+ * Fast mode, and High-Speed mode.
+ *
+ * @param dev The I2C device structure.
+ * @param speed The desired speed in Kbps.
+ * @return 0 on success, negative error code on failure.
+ */
+static int omap_i2c_set_speed(const struct device *dev, uint32_t speed)
+{
+	LOG_INF("Setting I2C controller speed to %d Kbps", speed);
+	struct i2c_omap_data *data = dev->data;
+	uint16_t psc = 0, scll = 0, sclh = 0;
+	uint16_t fsscll = 0, fssclh = 0, hsscll = 0, hssclh = 0;
+	unsigned long fclk_rate = 96000000;
+	unsigned long internal_clk = 0;
+	unsigned long scl=0;
+	unsigned long speed_kbps = speed/1000;
+
+	if (speed > I2C_BITRATE_FAST || data->flags & OMAP_I2C_FLAG_FORCE_19200_INT_CLK)
+	{
+		LOG_DBG("Forcing 19200 internal clock");
+		internal_clk = 19200;
+	}
+	else if (speed > I2C_BITRATE_STANDARD)
+	{
+		LOG_DBG("setting 9600 internal clock");
+		internal_clk = 9600;
+	}
+	else
+	{
+		LOG_DBG("setting 4000 internal clock");
+		internal_clk = 4000;
+	}
+	/* Compute prescaler divisor */
+	fclk_rate /= 1000;
+
+	psc = fclk_rate / internal_clk;
+	psc = psc - 1;
+
+	/* If configured for High Speed */
+	if (speed > I2C_BITRATE_FAST) {
+		/* For first phase of HS mode */
+		scl = internal_clk / 400;
+		fsscll = scl - (scl / 3) - 7;
+		fssclh = (scl / 3) - 5;
+
+		/* For second phase of HS mode */
+		scl = fclk_rate / speed_kbps;
+		hsscll = scl - (scl / 3) - 7;
+		hssclh = (scl / 3) - 5;
+	} else if (speed > I2C_BITRATE_STANDARD) {
+		/* Fast mode */
+		scl = internal_clk / speed_kbps;
+		fsscll = scl - (scl / 3) - 7;
+		fssclh = (scl / 3) - 5;
+	} else {
+		/* Standard mode */
+		fsscll = internal_clk / (speed_kbps * 2) - 7;
+		fssclh = internal_clk / (speed_kbps * 2) - 5;
+	}
+	LOG_DBG("fclock: %ld, internal_clk: %ld, scl: %ld", fclk_rate, internal_clk, scl);
+	LOG_DBG("fssccl: %d, fssclh: %d, hsscll: %d, hssclh: %d", fsscll, fssclh, hsscll, hssclh);
+	scll = (hsscll << OMAP_I2C_SCLL_HSSCLL) | fsscll;
+	sclh = (hssclh << OMAP_I2C_SCLH_HSSCLH) | fssclh;
+
+
+	data->pscstate = psc;
+	data->scllstate = scll;
+	data->sclhstate = sclh;
+
+	LOG_DBG("PSC: %d, SCLL: %d, SCLH: %d", psc, scll, sclh);
+
+	return 0;
+}
+
 /**
  * @brief Initialize the OMAP I2C controller.
  *
@@ -351,109 +426,22 @@ static int omap_i2c_init(const struct device *dev)
 	LOG_INF("Speed: %d Kbps", cfg->speed);
 	LOG_INF("Base: 0x%lx", cfg->base);
 	LOG_INF("IRQ: %d", cfg->irq);
+	uint16_t rev_low = omap_i2c_read_reg(cfg, I2C_REVNB_LO);
+	uint16_t rev_high = omap_i2c_read_reg(cfg, I2C_REVNB_HI);
+	LOG_DBG("I2C OMAP init called, REV_LO: 0x%08x, REV_HI: 0x%08x", rev_low, rev_high);
 
 	k_sem_init(&data->cmd_complete, 0, 1);
-	data->flags |= OMAP_I2C_FLAG_SIMPLE_CLOCK;
-	uint16_t psc = 0, scll = 0, sclh = 0;
-	uint16_t fsscll = 0, fssclh = 0;
-	unsigned long fclk_rate = 96000000;
-	unsigned long internal_clk = 0;
-	unsigned long speed = cfg->speed;
 
 	data->westate = OMAP_I2C_WE_ALL;
 
-	// if (omap->flags & OMAP_I2C_FLAG_ALWAYS_ARMXOR_CLK) {
-	// 	clk_dev = device_get_binding("CLOCK_CONTROL");
-	// 	if (!clk_dev) {
-	// 		LOG_ERR("Failed to get clock device binding");
-	// 		return -ENODEV;
-	// 	}
-
-	// 	if (clock_control_get_rate(clk_dev, CLOCK_CONTROL_SUBSYS_BASE, &fclk_rate)) {
-	// 		LOG_ERR("Could not get fck rate");
-	// 		return -EIO;
-	// 	}
-
-	// 	if (fclk_rate > 12000000) {
-	// 		psc = fclk_rate / 12000000;
-	// 	}
-	// }
-
-	// if (!(data->flags & OMAP_I2C_FLAG_SIMPLE_CLOCK)) {
-		 if (cfg->speed > I2C_BITRATE_STANDARD) {
-			LOG_DBG("Speed > 100 Kbps");
-			internal_clk = 9600;
-		} else {
-			internal_clk = 4000;
-		}
-
-	// 	clk_dev = device_get_binding("CLOCK_CONTROL");
-	// 	if (!clk_dev) {
-	// 		LOG_ERR("Failed to get clock device binding");
-	// 		return -ENODEV;
-	// 	}
-
-	// 	if (clock_control_get_rate(clk_dev, CLOCK_CONTROL_SUBSYS_BASE, &fclk_rate)) {
-	// 		LOG_ERR("Could not get fck rate");
-	// 		return -EIO;
-	// 	}
-		fclk_rate /= 1000;
-		speed /= 1000;
-		psc = fclk_rate / internal_clk;
-		psc = psc - 1;
-
-		if (cfg->speed > I2C_BITRATE_FAST) {
-			LOG_ERR("Speed > 400 Kbps not supported");
-			// unsigned long scl;
-
-			// scl = internal_clk / 400;
-			// fsscll = scl - (scl / 3) - 7;
-			// fssclh = (scl / 3) - 5;
-
-			// scl = fclk_rate / cfg->speed;
-			// hsscll = scl - (scl / 3) - 7;
-			// hssclh = (scl / 3) - 5;
-		} else {
-			LOG_DBG("Speed <= 400 Kbps");
-			fsscll = internal_clk / (speed * 2) - 7;
-			fssclh = internal_clk / (speed * 2) - 5;
-		}
-
-		scll = fsscll;
-		sclh = fssclh;
-	// } else {
-	// 	LOG_DBG("Simple clock configuration");
-	// 	fclk_rate /= (psc + 1) * 1000;
-	// 	if (psc > 2) {
-	// 		psc = 2;
-	// 	}
-	// 	scll = fclk_rate / (speed * 2) - 7 + psc;
-	// 	sclh = fclk_rate / (speed * 2) - 7 + psc;
-	// }
-
-
-	// As there is no clock control module, we will be fixing it to 100 Kbps
-	// For simplicity, always set the internal clock to 4000 kHz for 100 kbps operation
-	// internal_clk = 4000;
-
-	// Prescaler Calculation and clock periods for 100 kbps
-	// psc = 23;  // 23
-	// scll = 13;  //13
-	// sclh = 15;  //15
-
+	// Set the speed for I2C 
+	if (omap_i2c_set_speed(dev, cfg->speed)) {
+		LOG_ERR("Failed to set speed");
+		return -ENOTSUP;
+	}
 	data->iestate = (OMAP_I2C_IE_XRDY | OMAP_I2C_IE_RRDY | OMAP_I2C_IE_ARDY | OMAP_I2C_IE_NACK |
 			 OMAP_I2C_IE_AL) |
 			((data->fifo_size) ? (OMAP_I2C_IE_RDR | OMAP_I2C_IE_XDR) : 0);
-
-	data->pscstate = psc;
-	data->scllstate = scll;
-	data->sclhstate = sclh;
-	LOG_DBG("PSC: %d, SCLL: %d, SCLH: %d", psc, scll, sclh);
-
-	uint16_t rev_low = omap_i2c_read_reg(cfg, I2C_REVNB_LO);
-	uint16_t rev_high = omap_i2c_read_reg(cfg, I2C_REVNB_HI);
-
-	LOG_DBG("I2C OMAP init called, REV_LO: 0x%08x, REV_HI: 0x%08x", rev_low, rev_high);
 
 	__omap_i2c_init(dev);
 
@@ -497,16 +485,19 @@ static void omap_i2c_isr(const struct device *dev)
  */
 static int omap_i2c_configure(const struct device *dev, uint32_t dev_config)
 {
+	const struct i2c_omap_cfg *cfg = dev->config;
 	LOG_INF("Configuring I2C controller");
-
+	uint32_t speed_cfg;
 	switch (I2C_SPEED_GET(dev_config))
 	{
 		case I2C_SPEED_STANDARD:
 			/* Use recommended value for 100 kHz bus */
 			LOG_DBG("I2C controller Speed: I2C_SPEED_STANDARD(100 Kbps)");
+			speed_cfg = 100000;
 			goto out;
 		case I2C_SPEED_FAST:
 			LOG_DBG("I2C controller Speed: I2C_SPEED_FAST(400 Kbps)");
+			speed_cfg = 400000;
 			goto out;
 		default:
 			return -ENOTSUP;
@@ -515,18 +506,21 @@ static int omap_i2c_configure(const struct device *dev, uint32_t dev_config)
 	// const struct i2c_omap_cfg *cfg = dev->config;)
 	if ((dev_config & I2C_MODE_CONTROLLER) != I2C_MODE_CONTROLLER)
 	{
-		LOG_DBG("I2C controller does not support slave mode");
+		LOG_DBG("At the moment the I2C driver does not support slave mode");
 		return -ENOTSUP;
 	}
 
 	if ((dev_config & I2C_MSG_ADDR_10_BITS) != I2C_MSG_ADDR_10_BITS)
 	{
-		LOG_DBG("I2C controller does not support 10-bit addressing");
+		LOG_DBG("At the moment the I2C driver does not support 10-bit addressing");
 		return -ENOTSUP;
 	}
 
-
 out:
+	// Take the I2C module out of reset
+	LOG_DBG("Writing to I2C_CON register");
+	omap_i2c_write_reg(cfg, I2C_CON, 0);
+	omap_i2c_set_speed(dev, speed_cfg);
 	omap_i2c_reset(dev);
 	__omap_i2c_init(dev);
 
@@ -626,12 +620,6 @@ static void omap_i2c_resize_fifo(const struct device *dev, uint8_t size, bool is
 	omap_i2c_write_reg(cfg, I2C_BUF, buf);
 	data->fifo_size = buf;
 
-	// Calculate wakeup latency constraint for MPU
-	if (data->set_mpu_wkup_lat != NULL) {
-		LOG_DBG("Calculating wakeup latency constraint");
-		data->latency = (1000000 * data->threshold) / (1000 * cfg->speed / 8);
-		data->set_mpu_wkup_lat(cfg->init_func, data->latency);
-	}
 	LOG_DBG("FIFO resized successfully");
 }
 /**
@@ -971,43 +959,18 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, int 
 	// Set STOP condition flag if specified in message flags
 	if (msg->flags & I2C_MSG_STOP) {
 		LOG_DBG("Setting stop condition flag");
-		stop = 1;
+		control_reg |= OMAP_I2C_CON_STP;
 	}
 	// Set TRX (transmit/receive) flag based on message direction
 	if (!(msg->flags & I2C_MSG_READ)) {
 		LOG_DBG("Setting TRX flag for transmit");
 		control_reg |= OMAP_I2C_CON_TRX;
 	}
-	// Set STOP condition flag in non-hardware mode with stop condition specified
-	if (!data->b_hw && stop) {
-		LOG_DBG("Setting stop condition in non-hardware mode");
-		control_reg |= OMAP_I2C_CON_STP;
-	}
-
 
 	// Write control register settings to I2C control register
 	LOG_DBG("Writing control register settings to I2C control register");
 	omap_i2c_write_reg(cfg, I2C_CON, control_reg);
 
-	// Handle specific cases for non-hardware mode with stop condition
-	if (data->b_hw && stop) {
-		LOG_DBG("Handling non-hardware mode with stop condition");
-		uint64_t current_time = k_uptime_get(); // Get current uptime in milliseconds
-		uint64_t delay = current_time + 1000;   // Add timeout duration in ms
-		uint16_t con = omap_i2c_read_reg(cfg, I2C_CON);
-		while (con & OMAP_I2C_CON_STT) {
-			con = omap_i2c_read_reg(cfg, I2C_CON);
-			// Timeout handling if start condition doesn't finish within timeout period
-			if (k_uptime_get() > delay) {
-				LOG_ERR("controller timed out waiting for start condition to finish");
-				return -ETIMEDOUT;
-			}
-			k_sleep(K_MSEC(1)); // Yield to avoid busy looping
-		}
-		control_reg |= OMAP_I2C_CON_STP;
-		control_reg &= OMAP_I2C_CON_STT;
-		omap_i2c_write_reg(cfg, I2C_CON, control_reg);
-	}
 
 	// If not using polling, wait for completion of command
 	if (!polling) {
@@ -1282,17 +1245,12 @@ static int omap_i2c_xfer_common(const struct device *dev, struct i2c_msg msg[], 
 {
 	LOG_INF("Starting I2C transfer common");
 	struct i2c_omap_data *data = dev->data; 
-	const struct i2c_omap_cfg *cfg = dev->config;
 	int i, r = 0; 
 
 	r = omap_i2c_wait_for_bb(dev); // Wait for bus busy condition to clear
 	if (r < 0) {
 		LOG_DBG("omap_i2c_wait_for_bb failed with error %d", r);
 		goto out; // Exit if an error occurred during bus busy wait
-	}
-	if (data->set_mpu_wkup_lat != NULL) {
-		LOG_DBG("Setting MPU wakeup latency to %d", data->latency);
-		data->set_mpu_wkup_lat(cfg->init_func, data->latency);
 	}
 
 	// Loop through each message in the array and transfer it
@@ -1314,10 +1272,6 @@ static int omap_i2c_xfer_common(const struct device *dev, struct i2c_msg msg[], 
 
 	omap_i2c_wait_for_bb(dev); // Wait for bus busy condition to clear again
 
-	if (data->set_mpu_wkup_lat != NULL) {
-		LOG_DBG("Setting MPU wakeup latency to -1");
-		data->set_mpu_wkup_lat(cfg->init_func, -1);
-	}
 	LOG_DBG("Exiting at line %d", __LINE__);
 out:
 	// Error handling path
