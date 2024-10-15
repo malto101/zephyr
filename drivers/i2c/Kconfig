@@ -122,6 +122,7 @@ source "drivers/i2c/Kconfig.litex"
 source "drivers/i2c/Kconfig.lpc11u6x"
 source "drivers/i2c/Kconfig.npcx"
 source "drivers/i2c/Kconfig.test"
+source "drivers/i2c/Kconfig.omap"
 source "drivers/i2c/Kconfig.rcar"
 source "drivers/i2c/Kconfig.renesas_ra"
 source "drivers/i2c/Kconfig.tca954x"
@@ -232,6 +233,13 @@ config I2C_RV32M1_LPI2C
 	select PINCTRL
 	help
 	  Enable the RV32M1 LPI2C driver.
+
+# config I2C_OMAP_BUS_RECOVERY
+# 	bool "Bus recovery support"
+# 	depends on I2C_OMAP
+# 	select I2C_BITBANG
+# 	help
+# 		Enable OMAP I2C driver bus recovery support via bitbanging.
 
 config GPIO_I2C_SWITCH
 	bool "GPIO controlled I2C bus switch"

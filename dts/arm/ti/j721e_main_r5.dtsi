@@ -55,6 +55,17 @@
 		status = "okay";
 	};
 
+	i2c6: i2c@2060000 {
+		compatible = "ti,omap-i2c";
+		reg = <0x02060000 0x1000>;
+		interrupts = <0 187 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		clock-frequency = <100000>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
 	uart1: uart@2810000 {
 		compatible = "ns16550";
 		reg = <0x02810000 0x100>;
