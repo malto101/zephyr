@@ -25,117 +25,116 @@ LOG_MODULE_REGISTER(omap_i2c, CONFIG_OMAP_I2C_LOG_LEVEL);
 #define I2C_BITRATE_STANDARD 100000
 
 /* I2C Registers */
-#define I2C_REVNB_LO        0x0		/* Revision number low */
-#define I2C_REVNB_HI        0x4		/* Revision number high */
-#define I2C_SYSC            0x10	/* System configuration */
-#define I2C_EOI             0x20	/* End of interrupt */
-#define I2C_IRQSTATUS_RAW   0x24	/* Per-event raw interrupt status vector */
-#define I2C_IRQSTATUS       0x28	/* Per-event enabled interrupt status vector */
-#define I2C_IRQENABLE_SET   0x2c	/* Per-event interrupt enable bit set */
-#define I2C_IRQENABLE_CLR   0x30	/* Per-event interrupt clear bit clear */
-#define I2C_WE              0x34	/* Wakeup enable */
-#define I2C_DMARXENABLE_SET 0x38	/* Per-event DMA RX enable set */
-#define I2C_DMATXENABLE_SET 0x3c	/* Per-event DMA TX enable set */
-#define I2C_DMARXENABLE_CLR 0x40	/* Per-event DMA RX enable clear */
-#define I2C_DMATXENABLE_CLR 0x44	/* Per-event DMA TX enable clear */
-#define I2C_DMARXWAKE_EN    0x48	/* DMA RX wake enable */
-#define I2C_DMATXWAKE_EN    0x4c	/* DMA TX wake enable */
-#define I2C_IE              0x84	/* Interrupt enable(legacy) */
-#define I2C_STAT            0x88	/* Status */
-#define I2C_SYSS            0x90	/* System status */
-#define I2C_BUF             0x94	/* Buffer */
-#define I2C_CNT             0x98	/* Data count */
-#define I2C_DATA            0x9c	/* Data access */
-#define I2C_CON             0xa4	/* Configuration */
-#define I2C_OA              0xa8	/* Own address */
-#define I2C_SA              0xac	/* Slave Address */
-#define I2C_PSC             0xb0	/* Clock prescaler */
-#define I2C_SCLL            0xb4	/* SCL low time */
-#define I2C_SCLH            0xb8	/* SCL high time */
-#define I2C_SYSTEST         0xbc	/* System test */
-#define I2C_BUFSTAT         0xc0	/* Buffer status */
-#define I2C_OA1             0xc4	/* Own address 1 */
-#define I2C_OA2             0xc8	/* Own address 2 */
-#define I2C_OA3             0xcc	/* Own address 3 */
-#define I2C_ACTOA           0xd0	/* Active own address */
-#define I2C_SBLOCK          0xd4	/* Clock Blocking Enable */
+#define I2C_REVNB_LO		0x0		/* Revision number low */
+#define I2C_REVNB_HI		0x4		/* Revision number high */
+#define I2C_SYSC			0x10	/* System configuration */
+#define I2C_EOI				0x20	/* End of interrupt */
+#define I2C_IRQSTATUS_RAW	0x24	/* Per-event raw interrupt status vector */
+#define I2C_IRQSTATUS		0x28	/* Per-event enabled interrupt status vector */
+#define I2C_IRQENABLE_SET	0x2c	/* Per-event interrupt enable bit set */
+#define I2C_IRQENABLE_CLR	0x30	/* Per-event interrupt clear bit clear */
+#define I2C_WE				0x34	/* Wakeup enable */
+#define I2C_DMARXENABLE_SET	0x38	/* Per-event DMA RX enable set */
+#define I2C_DMATXENABLE_SET	0x3c	/* Per-event DMA TX enable set */
+#define I2C_DMARXENABLE_CLR	0x40	/* Per-event DMA RX enable clear */
+#define I2C_DMATXENABLE_CLR	0x44	/* Per-event DMA TX enable clear */
+#define I2C_DMARXWAKE_EN	0x48	/* DMA RX wake enable */
+#define I2C_DMATXWAKE_EN	0x4c	/* DMA TX wake enable */
+#define I2C_IE				0x84	/* Interrupt enable(legacy) */
+#define I2C_STAT			0x88	/* Status */
+#define I2C_SYSS			0x90	/* System status */
+#define I2C_BUF				0x94	/* Buffer */
+#define I2C_CNT				0x98	/* Data count */
+#define I2C_DATA			0x9c	/* Data access */
+#define I2C_CON				0xa4	/* Configuration */
+#define I2C_OA				0xa8	/* Own address */
+#define I2C_SA				0xac	/* Slave Address */
+#define I2C_PSC				0xb0	/* Clock prescaler */
+#define I2C_SCLL			0xb4	/* SCL low time */
+#define I2C_SCLH			0xb8	/* SCL high time */
+#define I2C_SYSTEST			0xbc	/* System test */
+#define I2C_BUFSTAT			0xc0	/* Buffer status */
+#define I2C_OA1				0xc4	/* Own address 1 */
+#define I2C_OA2				0xc8	/* Own address 2 */
+#define I2C_OA3				0xcc	/* Own address 3 */
+#define I2C_ACTOA			0xd0	/* Active own address */
+#define I2C_SBLOCK			0xd4	/* Clock Blocking Enable */
 
-/* I2C Interrupt Enable Register (OMAP_I2C_IE): */
-#define OMAP_I2C_IE_XDR		(1 << 14)	/* TX Buffer drain int enable */
-#define OMAP_I2C_IE_RDR		(1 << 13)	/* RX Buffer drain int enable */
-#define OMAP_I2C_IE_XRDY	(1 << 4)	/* TX data ready int enable */
-#define OMAP_I2C_IE_RRDY	(1 << 3)	/* RX data ready int enable */
-#define OMAP_I2C_IE_ARDY	(1 << 2)	/* Access ready int enable */
-#define OMAP_I2C_IE_NACK	(1 << 1)	/* No ack interrupt enable */
-#define OMAP_I2C_IE_AL		(1 << 0)	/* Arbitration lost int ena */
+/* I2C Interrupt Enable Register (OMAP_I2C_IE) */
+#define I2C_IE_XDR		BIT(14)		/* TX Buffer drain interrupt enable */
+#define I2C_IE_RDR		BIT(13)		/* RX Buffer drain interrupt enable */
+#define I2C_IE_XRDY		BIT(4)		/* TX data ready interrupt enable */
+#define I2C_IE_RRDY		BIT(3)		/* RX data ready interrupt enable */
+#define I2C_IE_ARDY		BIT(2)		/* Access ready interrupt enable */
+#define I2C_IE_NACK		BIT(1)		/* No acknowledgment interrupt enable */
+#define OMAP_I2C_IE_AL	BIT(0)		/* Arbitration lost interrupt enable */
 
-/* I2C Configuration Register (OMAP_I2C_CON): */
-#define OMAP_I2C_CON_EN		(1 << 15)	/* I2C module enable */
-#define OMAP_I2C_CON_BE		(1 << 14)	/* Big endian mode */
-#define OMAP_I2C_CON_OPMODE_HS	(1 << 12)	/* High Speed support */
-#define OMAP_I2C_CON_STB	(1 << 11)	/* Start byte mode (master) */
-#define OMAP_I2C_CON_MST	(1 << 10)	/* Master/slave mode */
-#define OMAP_I2C_CON_TRX	(1 << 9)	/* TX/RX mode (master only) */
-#define OMAP_I2C_CON_XA		(1 << 8)	/* Expand address */
-#define OMAP_I2C_CON_RM		(1 << 2)	/* Repeat mode (master only) */
-#define OMAP_I2C_CON_STP	(1 << 1)	/* Stop cond (master only) */
-#define OMAP_I2C_CON_STT	(1 << 0)	/* Start condition (master) */
+/* I2C Configuration Register (OMAP_I2C_CON) */
+#define I2C_CON_EN			BIT(15)  /* I2C module enable */
+#define I2C_CON_BE			BIT(14)  /* Big endian mode */
+#define I2C_CON_OPMODE_HS	BIT(12)  /* High Speed support */
+#define I2C_CON_STB			BIT(11)  /* Start byte mode (master) */
+#define I2C_CON_MST			BIT(10)  /* Master/slave mode */
+#define I2C_CON_TRX			BIT(9)   /* TX/RX mode (master only) */
+#define I2C_CON_XA			BIT(8)   /* Expand address */
+#define I2C_CON_STP			BIT(1)   /* Stop condition (master only) */
+#define I2C_CON_STT			BIT(0)   /* Start condition (master) */
 
 /* I2C WE wakeup enable register */
-#define OMAP_I2C_WE_XDR_WE	(1 << 14)	/* TX drain wakup */
-#define OMAP_I2C_WE_RDR_WE	(1 << 13)	/* RX drain wakeup */
-#define OMAP_I2C_WE_AAS_WE	(1 << 9)	/* Address as slave wakeup*/
-#define OMAP_I2C_WE_BF_WE	(1 << 8)	/* Bus free wakeup */
-#define OMAP_I2C_WE_STC_WE	(1 << 6)	/* Start condition wakeup */
-#define OMAP_I2C_WE_GC_WE	(1 << 5)	/* General call wakeup */
-#define OMAP_I2C_WE_DRDY_WE	(1 << 3)	/* TX/RX data ready wakeup */
-#define OMAP_I2C_WE_ARDY_WE	(1 << 2)	/* Reg access ready wakeup */
-#define OMAP_I2C_WE_NACK_WE	(1 << 1)	/* No acknowledgment wakeup */
-#define OMAP_I2C_WE_AL_WE	(1 << 0)	/* Arbitration lost wakeup */
+#define I2C_WE_XDR_WE	BIT(14)		/* TX drain wakeup */
+#define I2C_WE_RDR_WE	BIT(13)		/* RX drain wakeup */
+#define I2C_WE_AAS_WE	BIT(9)		/* Address as slave wakeup */
+#define I2C_WE_BF_WE	BIT(8)		/* Bus free wakeup */
+#define I2C_WE_STC_WE	BIT(6)		/* Start condition wakeup */
+#define I2C_WE_GC_WE	BIT(5)		/* General call wakeup */
+#define I2C_WE_DRDY_WE	BIT(3)		/* TX/RX data ready wakeup */
+#define I2C_WE_ARDY_WE	BIT(2)		/* Register access ready wakeup */
+#define I2C_WE_NACK_WE	BIT(1)		/* No acknowledgment wakeup */
+#define I2C_WE_AL_WE	BIT(0)		/* Arbitration lost wakeup */
 
-#define OMAP_I2C_WE_ALL		(OMAP_I2C_WE_XDR_WE | OMAP_I2C_WE_RDR_WE | \
-				OMAP_I2C_WE_AAS_WE | OMAP_I2C_WE_BF_WE | \
-				OMAP_I2C_WE_STC_WE | OMAP_I2C_WE_GC_WE | \
-				OMAP_I2C_WE_DRDY_WE | OMAP_I2C_WE_ARDY_WE | \
-				OMAP_I2C_WE_NACK_WE | OMAP_I2C_WE_AL_WE)
+#define I2C_WE_ALL		(I2C_WE_XDR_WE | I2C_WE_RDR_WE | \
+				I2C_WE_AAS_WE | I2C_WE_BF_WE | \
+				I2C_WE_STC_WE | I2C_WE_GC_WE | \
+				I2C_WE_DRDY_WE | I2C_WE_ARDY_WE | \
+				I2C_WE_NACK_WE | I2C_WE_AL_WE)
 
 /* I2C Buffer Configuration Register (OMAP_I2C_BUF): */
-#define OMAP_I2C_BUF_RDMA_EN   BIT(15) /* RX DMA channel enable */
-#define OMAP_I2C_BUF_RXFIF_CLR BIT(14) /* RX FIFO Clear */
-#define OMAP_I2C_BUF_XDMA_EN   BIT(7)  /* TX DMA channel enable */
-#define OMAP_I2C_BUF_TXFIF_CLR BIT(6)  /* TX FIFO Clear */
+#define I2C_BUF_RDMA_EN 	BIT(15) /* RX DMA channel enable */
+#define I2C_BUF_RXFIF_CLR	BIT(14) /* RX FIFO Clear */
+#define I2C_BUF_XDMA_EN		BIT(7)  /* TX DMA channel enable */
+#define I2C_BUF_TXFIF_CLR	BIT(6)  /* TX FIFO Clear */
 
 /* I2C Status Register (OMAP_I2C_STAT): */
-#define OMAP_I2C_STAT_XDR  BIT(14) /* TX Buffer draining */
-#define OMAP_I2C_STAT_RDR  BIT(13) /* RX Buffer draining */
-#define OMAP_I2C_STAT_BB   BIT(12) /* Bus busy */
-#define OMAP_I2C_STAT_ROVR BIT(11) /* Receive overrun */
-#define OMAP_I2C_STAT_XUDF BIT(10) /* Transmit underflow */
-#define OMAP_I2C_STAT_AAS  BIT(9)  /* Address as slave */
-#define OMAP_I2C_STAT_BF   BIT(8)  /* Bus Free */
-#define OMAP_I2C_STAT_XRDY BIT(4)  /* Transmit data ready */
-#define OMAP_I2C_STAT_RRDY BIT(3)  /* Receive data ready */
-#define OMAP_I2C_STAT_ARDY BIT(2)  /* Register access ready */
-#define OMAP_I2C_STAT_NACK BIT(1)  /* No ack interrupt enable */
-#define OMAP_I2C_STAT_AL   BIT(0)  /* Arbitration lost int ena */
+#define I2C_STAT_XDR  BIT(14) /* TX Buffer draining */
+#define I2C_STAT_RDR  BIT(13) /* RX Buffer draining */
+#define I2C_STAT_BB   BIT(12) /* Bus busy */
+#define I2C_STAT_ROVR BIT(11) /* Receive overrun */
+#define I2C_STAT_XUDF BIT(10) /* Transmit underflow */
+#define I2C_STAT_AAS  BIT(9)  /* Address as slave */
+#define I2C_STAT_BF   BIT(8)  /* Bus Free */
+#define I2C_STAT_XRDY BIT(4)  /* Transmit data ready */
+#define I2C_STAT_RRDY BIT(3)  /* Receive data ready */
+#define I2C_STAT_ARDY BIT(2)  /* Register access ready */
+#define I2C_STAT_NACK BIT(1)  /* No ack interrupt enable */
+#define I2C_STAT_AL   BIT(0)  /* Arbitration lost */
 
 /* I2C System Test Register (OMAP_I2C_SYSTEST): */
-#define OMAP_I2C_SYSTEST_ST_EN       BIT(15) /* System test enable */
-#define OMAP_I2C_SYSTEST_FREE        BIT(14) /* Free running mode */
-#define OMAP_I2C_SYSTEST_TMODE_MASK  (3 << 12) /* Test mode select mask */
-#define OMAP_I2C_SYSTEST_TMODE_SHIFT (12)      /* Test mode select shift */
+#define I2C_SYSTEST_ST_EN       BIT(15) /* System test enable */
+#define I2C_SYSTEST_FREE        BIT(14) /* Free running mode */
+#define I2C_SYSTEST_TMODE_MASK  (3 << 12) /* Test mode select mask */
+#define I2C_SYSTEST_TMODE_SHIFT (12)      /* Test mode select shift */
 
 /* Functional mode */
-#define OMAP_I2C_SYSTEST_SCL_I_FUNC  BIT(8)  /* SCL line input value */
-#define OMAP_I2C_SYSTEST_SCL_O_FUNC  BIT(7)  /* SCL line output value */
-#define OMAP_I2C_SYSTEST_SDA_I_FUNC  BIT(6)  /* SDA line input value */
-#define OMAP_I2C_SYSTEST_SDA_O_FUNC  BIT(5)  /* SDA line output value */
+#define I2C_SYSTEST_SCL_I_FUNC  BIT(8)  /* SCL line input value */
+#define I2C_SYSTEST_SCL_O_FUNC  BIT(7)  /* SCL line output value */
+#define I2C_SYSTEST_SDA_I_FUNC  BIT(6)  /* SDA line input value */
+#define I2C_SYSTEST_SDA_O_FUNC  BIT(5)  /* SDA line output value */
 
 /* SDA/SCL IO mode */
-#define OMAP_I2C_SYSTEST_SCL_I       BIT(3)  /* SCL line sense in */
-#define OMAP_I2C_SYSTEST_SCL_O       BIT(2)  /* SCL line drive out */
-#define OMAP_I2C_SYSTEST_SDA_I       BIT(1)  /* SDA line sense in */
-#define OMAP_I2C_SYSTEST_SDA_O       BIT(0)  /* SDA line drive out */
+#define I2C_SYSTEST_SCL_I       BIT(3)  /* SCL line sense in */
+#define I2C_SYSTEST_SCL_O       BIT(2)  /* SCL line drive out */
+#define I2C_SYSTEST_SDA_I       BIT(1)  /* SDA line sense in */
+#define I2C_SYSTEST_SDA_O       BIT(0)  /* SDA line drive out */
 
 typedef void (*init_func_t)(const struct device *dev);
 
@@ -232,15 +231,15 @@ static void __omap_i2c_init(const struct device *dev)
 	omap_i2c_write_reg(cfg, I2C_SCLL, data->speed_config.scllstate);
 	omap_i2c_write_reg(cfg, I2C_SCLH, data->speed_config.sclhstate);
 
-	omap_i2c_write_reg(cfg, I2C_WE, OMAP_I2C_WE_ALL);
+	omap_i2c_write_reg(cfg, I2C_WE, I2C_WE_ALL);
 
-	omap_i2c_write_reg(cfg, I2C_CON, OMAP_I2C_CON_EN);
+	omap_i2c_write_reg(cfg, I2C_CON, I2C_CON_EN);
 
 	k_busy_wait(1);
-	uint16_t iestate = (OMAP_I2C_IE_XRDY | OMAP_I2C_IE_RRDY |
-			OMAP_I2C_IE_ARDY | OMAP_I2C_IE_NACK |
+	uint16_t iestate = (I2C_IE_XRDY | I2C_IE_RRDY |
+			I2C_IE_ARDY | I2C_IE_NACK |
 			OMAP_I2C_IE_AL)  | ((data->current_msg.len) ?
-				(OMAP_I2C_IE_RDR | OMAP_I2C_IE_XDR) : 0);
+				(I2C_IE_RDR | I2C_IE_XDR) : 0);
 	omap_i2c_write_reg(cfg, I2C_IRQENABLE_SET, iestate);
 }
 
@@ -262,13 +261,13 @@ static int omap_i2c_reset(const struct device *dev)
 	sysc = omap_i2c_read_reg(cfg, I2C_SYSC);
 
 	// Disable the I2C controller by clearing the enable bit in the CON register
-	omap_i2c_write_reg(cfg, I2C_CON, omap_i2c_read_reg(cfg, I2C_CON) & ~(OMAP_I2C_CON_EN));
+	omap_i2c_write_reg(cfg, I2C_CON, omap_i2c_read_reg(cfg, I2C_CON) & ~(I2C_CON_EN));
 
 	// Set the timeout value to 1000 milliseconds from the current uptime
 	timeout = k_uptime_get() + OMAP_I2C_TIMEOUT;
 
 	// Re-enable the I2C controller
-	omap_i2c_write_reg(cfg, I2C_CON, OMAP_I2C_CON_EN);
+	omap_i2c_write_reg(cfg, I2C_CON, I2C_CON_EN);
 
 	// Wait for the reset to complete by polling the SYSS register
 	while (!(omap_i2c_read_reg(cfg, I2C_SYSS) & SYSS_RESETDONE_MASK)) {
@@ -446,11 +445,11 @@ static void omap_i2c_resize_fifo(const struct device *dev, uint8_t size)
 	if (data->receiver) {
 		// Clear RX threshold
 		buf_cfg &= ~(0x3f << 8);
-		buf_cfg |= ((size) << 8) | OMAP_I2C_BUF_RXFIF_CLR;
+		buf_cfg |= ((size) << 8) | I2C_BUF_RXFIF_CLR;
 	} else {
 		// Clear TX threshold
 		buf_cfg &= ~0x3f;
-		buf_cfg |= (size) | OMAP_I2C_BUF_TXFIF_CLR ;
+		buf_cfg |= (size) | I2C_BUF_TXFIF_CLR ;
 	}
 	omap_i2c_write_reg(cfg, I2C_BUF, buf_cfg);
 }
@@ -470,7 +469,7 @@ static int __maybe_unused omap_i2c_get_scl(void *io_context)
 
 	reg = omap_i2c_read_reg(cfg, I2C_SYSTEST);
 
-	return reg & OMAP_I2C_SYSTEST_SCL_I_FUNC;
+	return reg & I2C_SYSTEST_SCL_I_FUNC;
 }
 
 /**
@@ -488,7 +487,7 @@ static int omap_i2c_get_sda(void *io_context)
 
 	reg = omap_i2c_read_reg(cfg, I2C_SYSTEST);
 
-	return reg & OMAP_I2C_SYSTEST_SDA_I_FUNC;
+	return reg & I2C_SYSTEST_SDA_I_FUNC;
 }
 
 /**
@@ -507,9 +506,9 @@ static void omap_i2c_set_sda(void *io_context, int state)
 	reg = omap_i2c_read_reg(cfg, I2C_SYSTEST);
 
 	if (state) {
-		reg |= OMAP_I2C_SYSTEST_SDA_O;
+		reg |= I2C_SYSTEST_SDA_O;
 	} else {
-		reg &= ~OMAP_I2C_SYSTEST_SDA_O;
+		reg &= ~I2C_SYSTEST_SDA_O;
 	}
 
 	omap_i2c_write_reg(cfg, I2C_SYSTEST, reg);
@@ -531,9 +530,9 @@ static void omap_i2c_set_scl(void *io_context, int state)
 	reg = omap_i2c_read_reg(cfg, I2C_SYSTEST);
 
 	if (state) {
-		reg |= OMAP_I2C_SYSTEST_SCL_O;
+		reg |= I2C_SYSTEST_SCL_O;
 	} else {
-		reg &= ~OMAP_I2C_SYSTEST_SCL_O;
+		reg &= ~I2C_SYSTEST_SCL_O;
 	}
 
 	omap_i2c_write_reg(cfg, I2C_SYSTEST, reg);
@@ -561,7 +560,7 @@ static int omap_i2c_recover_bus(const struct device *dev)
 	uint32_t reg;
 	int error = 0;
 	reg = omap_i2c_read_reg(cfg, I2C_SYSTEST);
-	reg |= OMAP_I2C_SYSTEST_ST_EN | 3 << OMAP_I2C_SYSTEST_TMODE_SHIFT | OMAP_I2C_SYSTEST_SCL_O | OMAP_I2C_SYSTEST_SDA_O;
+	reg |= I2C_SYSTEST_ST_EN | 3 << I2C_SYSTEST_TMODE_SHIFT | I2C_SYSTEST_SCL_O | I2C_SYSTEST_SDA_O;
 	omap_i2c_write_reg(cfg, I2C_SYSTEST, reg);
 
 	i2c_bitbang_init(&bitbang_omap, &bitbang_omap_io, (void *)cfg);
@@ -574,7 +573,7 @@ static int omap_i2c_recover_bus(const struct device *dev)
 
 restore:
 	reg = omap_i2c_read_reg(cfg, I2C_SYSTEST);
-	reg &= ~OMAP_I2C_SYSTEST_ST_EN & ~OMAP_I2C_SYSTEST_TMODE_MASK & ~OMAP_I2C_SYSTEST_SCL_O & ~OMAP_I2C_SYSTEST_SDA_O;
+	reg &= ~I2C_SYSTEST_ST_EN & ~I2C_SYSTEST_TMODE_MASK & ~I2C_SYSTEST_SCL_O & ~I2C_SYSTEST_SDA_O;
 	omap_i2c_write_reg(cfg, I2C_SYSTEST, reg);
 	return error;
 }
@@ -597,7 +596,7 @@ static int omap_i2c_wait_for_bb(const struct device *dev)
 	const struct i2c_omap_cfg *cfg = dev->config;
 	uint32_t timeout;
 	timeout = k_uptime_get_32() + OMAP_I2C_TIMEOUT;
-	while (omap_i2c_read_reg(cfg, I2C_STAT) & OMAP_I2C_STAT_BB) {
+	while (omap_i2c_read_reg(cfg, I2C_STAT) & I2C_STAT_BB) {
 		if (k_uptime_get_32() > timeout){
 			return omap_i2c_recover_bus(dev);
 		} 
@@ -630,64 +629,64 @@ static int omap_i2c_xfer_data(const struct device *dev)
 		stat |= bits;
 
 		if (data->receiver) {
-			stat &= ~(OMAP_I2C_STAT_XDR | OMAP_I2C_STAT_XRDY);
+			stat &= ~(I2C_STAT_XDR | I2C_STAT_XRDY);
 		} else {
-			stat &= ~(OMAP_I2C_STAT_RDR | OMAP_I2C_STAT_RRDY);
+			stat &= ~(I2C_STAT_RDR | I2C_STAT_RRDY);
 		}
 
-		if (stat & OMAP_I2C_STAT_NACK) {
-			err |= OMAP_I2C_STAT_NACK;
-			omap_i2c_ack_stat(dev, OMAP_I2C_STAT_NACK);
+		if (stat & I2C_STAT_NACK) {
+			err |= I2C_STAT_NACK;
+			omap_i2c_ack_stat(dev, I2C_STAT_NACK);
 		}
 
-		if (stat & OMAP_I2C_STAT_AL) {
-			err |= OMAP_I2C_STAT_AL;
-			omap_i2c_ack_stat(dev, OMAP_I2C_STAT_AL);
+		if (stat & I2C_STAT_AL) {
+			err |= I2C_STAT_AL;
+			omap_i2c_ack_stat(dev, I2C_STAT_AL);
 		}
 
-		if (stat & OMAP_I2C_STAT_ARDY) {
-			omap_i2c_ack_stat(dev, OMAP_I2C_STAT_ARDY);
+		if (stat & I2C_STAT_ARDY) {
+			omap_i2c_ack_stat(dev, I2C_STAT_ARDY);
 		}
 
-		if (stat & (OMAP_I2C_STAT_ARDY | OMAP_I2C_STAT_NACK | OMAP_I2C_STAT_AL)) {
-			omap_i2c_ack_stat(dev, OMAP_I2C_STAT_RRDY | OMAP_I2C_STAT_RDR |
-						       OMAP_I2C_STAT_XRDY | OMAP_I2C_STAT_XDR |
-						       OMAP_I2C_STAT_ARDY);
+		if (stat & (I2C_STAT_ARDY | I2C_STAT_NACK | I2C_STAT_AL)) {
+			omap_i2c_ack_stat(dev, I2C_STAT_RRDY | I2C_STAT_RDR |
+						       I2C_STAT_XRDY | I2C_STAT_XDR |
+						       I2C_STAT_ARDY);
 			break;
 		}
 
 		// Handle receive logic
-		if (stat & (OMAP_I2C_STAT_RRDY | OMAP_I2C_STAT_RDR)) {
+		if (stat & (I2C_STAT_RRDY | I2C_STAT_RDR)) {
 			int buffer = omap_i2c_read_reg(
-				cfg, (stat & OMAP_I2C_STAT_RRDY) ? I2C_BUF : I2C_BUFSTAT);
+				cfg, (stat & I2C_STAT_RRDY) ? I2C_BUF : I2C_BUFSTAT);
 			omap_i2c_transmit_receive_data(dev, buffer);
-			omap_i2c_ack_stat(dev, stat & OMAP_I2C_STAT_RRDY ? OMAP_I2C_STAT_RRDY
-									 : OMAP_I2C_STAT_RDR);
+			omap_i2c_ack_stat(dev, stat & I2C_STAT_RRDY ? I2C_STAT_RRDY
+									 : I2C_STAT_RDR);
 			continue;
 		}
 
 		// Handle transmit logic
-		if (stat & (OMAP_I2C_STAT_XRDY | OMAP_I2C_STAT_XDR)) {
+		if (stat & (I2C_STAT_XRDY | I2C_STAT_XDR)) {
 			int buffer = omap_i2c_read_reg(
-				cfg, (stat & OMAP_I2C_STAT_XRDY) ? I2C_BUF : I2C_BUFSTAT);
+				cfg, (stat & I2C_STAT_XRDY) ? I2C_BUF : I2C_BUFSTAT);
 			omap_i2c_transmit_receive_data(dev, buffer);
-			omap_i2c_ack_stat(dev, (stat & OMAP_I2C_STAT_XRDY) ? OMAP_I2C_STAT_XRDY
-									   : OMAP_I2C_STAT_XDR);
+			omap_i2c_ack_stat(dev, (stat & I2C_STAT_XRDY) ? I2C_STAT_XRDY
+									   : I2C_STAT_XDR);
 			continue;
 		}
 		
 
-		if (stat & OMAP_I2C_STAT_ROVR) {
+		if (stat & I2C_STAT_ROVR) {
 			LOG_INF("Receive overrun");
-			err |= OMAP_I2C_STAT_ROVR;
-			omap_i2c_ack_stat(dev, OMAP_I2C_STAT_ROVR);
+			err |= I2C_STAT_ROVR;
+			omap_i2c_ack_stat(dev, I2C_STAT_ROVR);
 			break;
 		}
 
-		if (stat & OMAP_I2C_STAT_XUDF) {
+		if (stat & I2C_STAT_XUDF) {
 			LOG_ERR("Transmit underflow");
-			err |= OMAP_I2C_STAT_XUDF;
-			omap_i2c_ack_stat(dev, OMAP_I2C_STAT_XUDF);
+			err |= I2C_STAT_XUDF;
+			omap_i2c_ack_stat(dev, I2C_STAT_XUDF);
 			break;
 		
 
@@ -748,7 +747,7 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, bool
 	omap_i2c_write_reg(cfg, I2C_CNT, msg->len);
 	// Clear FIFO buffers in the I2C controller
 	control_reg = omap_i2c_read_reg(cfg, I2C_BUF);
-	control_reg |= OMAP_I2C_BUF_RXFIF_CLR | OMAP_I2C_BUF_TXFIF_CLR;
+	control_reg |= I2C_BUF_RXFIF_CLR | I2C_BUF_TXFIF_CLR;
 	omap_i2c_write_reg(cfg, I2C_BUF, control_reg);
 	// If not using polling, reset command completion semaphore
 	if (!polling) {
@@ -758,19 +757,19 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, bool
 	// Reset command error flag
 	data->cmd_err = 0;
 	// Configure control register bits for I2C operation
-	control_reg = OMAP_I2C_CON_EN | OMAP_I2C_CON_MST | OMAP_I2C_CON_STT;
+	control_reg = I2C_CON_EN | I2C_CON_MST | I2C_CON_STT;
 
 	// Set high-speed mode if configured speed is greater than 400 kHz
 	if (data->speed > I2C_BITRATE_FAST) {
-		control_reg |= OMAP_I2C_CON_OPMODE_HS;
+		control_reg |= I2C_CON_OPMODE_HS;
 	}
 	// Set STOP condition flag if specified in message flags
 	if (msg->flags & I2C_MSG_STOP) {
-		control_reg |= OMAP_I2C_CON_STP;
+		control_reg |= I2C_CON_STP;
 	}
 	// Set TRX (transmit/receive) flag based on message direction
 	if (!(msg->flags & I2C_MSG_READ)) {
-		control_reg |= OMAP_I2C_CON_TRX;
+		control_reg |= I2C_CON_TRX;
 	}
 
 	// Write control register settings to I2C control register
@@ -797,7 +796,7 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, bool
 		
 	}
 	// Handle timeout and specific error conditions
-	if (time_left == 0 || (data->cmd_err & (OMAP_I2C_STAT_ROVR | OMAP_I2C_STAT_XUDF))) {
+	if (time_left == 0 || (data->cmd_err & (I2C_STAT_ROVR | I2C_STAT_XUDF))) {
 		omap_i2c_reset(dev);
 		__omap_i2c_init(dev);
 
@@ -809,21 +808,21 @@ static int omap_i2c_xfer_msg(const struct device *dev, struct i2c_msg *msg, bool
 		}
 	}
 	// Handle arbitration lost, NACK, and command errors
-	if (data->cmd_err & (OMAP_I2C_STAT_AL | OMAP_I2C_STAT_NACK)) {
+	if (data->cmd_err & (I2C_STAT_AL | I2C_STAT_NACK)) {
 
 		// Arbitration lost error, try again
-		if (data->cmd_err & OMAP_I2C_STAT_AL) {
+		if (data->cmd_err & I2C_STAT_AL) {
 			return -EAGAIN;
 		}
 
 		// NACK error handling
-		if (data->cmd_err & OMAP_I2C_STAT_NACK) {
+		if (data->cmd_err & I2C_STAT_NACK) {
 			if (msg->flags) {
 				return 0; // Non-essential message, return success
 			}
 
 			// Send STOP condition on NACK error
-			omap_i2c_write_reg(cfg, I2C_CON, omap_i2c_read_reg(cfg, I2C_CON) | OMAP_I2C_CON_STP);
+			omap_i2c_write_reg(cfg, I2C_CON, omap_i2c_read_reg(cfg, I2C_CON) | I2C_CON_STP);
 			return -ENOMSG; // Message error due to NACK
 		}
 	}
@@ -881,7 +880,7 @@ static int omap_i2c_xfer_common(const struct device *dev, struct i2c_msg msg[], 
 static void omap_i2c_isr(const struct device *dev)
 {
 	struct i2c_omap_data *data = dev->data;
-	if (omap_i2c_read_reg(dev->config, I2C_STAT) & omap_i2c_read_reg(dev->config, I2C_IE) & ~OMAP_I2C_STAT_NACK) {
+	if (omap_i2c_read_reg(dev->config, I2C_STAT) & omap_i2c_read_reg(dev->config, I2C_IE) & ~I2C_STAT_NACK) {
 		k_sem_give(&data->cmd_complete);
 	}
 }
