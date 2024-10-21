@@ -933,7 +933,7 @@ static const struct i2c_driver_api i2c_omap_api = {
                                                                                                    \
 	static void i2c_omap_##inst##_init(const struct device *dev)                               \
 	{                                                                                          \
-		IRQ_CONNECT(DT_INST_IRQN(inst), 0, i2c_omap_isr, DEVICE_DT_INST_GET(inst), 0);     \
+		IRQ_CONNECT(DT_INST_IRQN(inst), DT_INST_IRQ(inst, priority), i2c_omap_isr, DEVICE_DT_INST_GET(inst), 0);     \
                                                                                                    \
 		irq_enable(DT_INST_IRQN(inst));                                                    \
 	};
