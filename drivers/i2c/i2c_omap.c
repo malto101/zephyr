@@ -136,7 +136,7 @@ LOG_MODULE_REGISTER(omap_i2c, CONFIG_OMAP_I2C_LOG_LEVEL);
 typedef void (*init_func_t)(const struct device *dev);
 
 struct i2c_omap_cfg {
-	uint32_t base;
+	mem_addr_t base;
 	uint32_t irq;
 	uint32_t speed;
 	init_func_t init_func;
@@ -331,7 +331,6 @@ static int i2c_omap_init(const struct device *dev)
 	const struct i2c_omap_cfg *cfg = dev->config;
 
 	k_sem_init(&data->cmd_complete, 0, 1);
-
 	/* Set the speed for I2C */
 	if (i2c_omap_set_speed(dev, cfg->speed)) {
 		LOG_ERR("Failed to set speed");
