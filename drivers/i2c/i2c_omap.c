@@ -12,7 +12,10 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/irq.h>
 #include <zephyr/drivers/i2c.h>
+
+#ifdef CONFIG_I2C_OMAP_BUS_RECOVERY
 #include "i2c_bitbang.h"
+#endif /* CONFIG_I2C_OMAP_BUS_RECOVERY */
 
 LOG_MODULE_REGISTER(omap_i2c, CONFIG_I2C_LOG_LEVEL);
 
@@ -234,7 +237,7 @@ static int i2c_omap_reset(const struct device *dev)
 	i2c_omap_reg_set(cfg, I2C_OMAP_CON,
 			 i2c_omap_reg_access(cfg, I2C_OMAP_CON) & ~(I2C_OMAP_CON_EN));
 
-	timeout = k_uptime_get() + I2C_OMAP_OMAP_TIMEOUT;
+	timeout = k_uptime_get() + I2C_OMAP_TIMEOUT;
 
 	i2c_omap_reg_set(cfg, I2C_OMAP_CON, I2C_OMAP_CON_EN);
 
@@ -412,12 +415,124 @@ static void i2c_omap_resize_fifo(const struct device *dev, uint8_t size)
 	i2c_omap_reg_set(cfg, I2C_OMAP_BUF, buf_cfg);
 }
 
+#ifdef CONFIG_I2C_OMAP_BUS_RECOVERY
+/**
+ * @brief Get the state of the SDA line.
+ *
+ * This function retrieves the state of the SDA (data) line for the OMAP I2C controller.
+ *
+ * @param io_context The I2C context.
+ * @return The state of the SDA line.
+ */
+static int i2c_omap_get_sda(void *io_context)
+{
+	const struct i2c_omap_cfg *cfg = io_context;
+	uint32_t reg;
+
+	reg = i2c_omap_reg_access(cfg, I2C_OMAP_SYSTEST);
+
+	return reg & I2C_OMAP_SYSTEST_SDA_I_FUNC;
+}
+
+/**
+ * @brief Set the state of the SDA line.
+ *
+ * This function sets the state of the SDA (data) line for the OMAP I2C controller.
+ *
+ * @param io_context The I2C context.
+ * @param state The state to set (0 for low, 1 for high).
+ */
+static void i2c_omap_set_sda(void *io_context, int state)
+{
+	const struct i2c_omap_cfg *cfg = io_context;
+	uint32_t reg;
+
+	reg = i2c_omap_reg_access(cfg, I2C_OMAP_SYSTEST);
+
+	if (state) {
+		reg |= I2C_OMAP_SYSTEST_SDA_O;
+	} else {
+		reg &= ~I2C_OMAP_SYSTEST_SDA_O;
+	}
+
+	i2c_omap_reg_set(cfg, I2C_OMAP_SYSTEST, reg);
+}
+
+/**
+ * @brief Set the state of the SCL line.
+ *
+ * This function sets the state of the SCL (clock) line for the OMAP I2C controller.
+ *
+ * @param io_context The I2C context.
+ * @param state The state to set (0 for low, 1 for high).
+ */
+static void i2c_omap_set_scl(void *io_context, int state)
+{
+	const struct i2c_omap_cfg *cfg = io_context;
+	uint32_t reg;
+
+	reg = i2c_omap_reg_access(cfg, I2C_OMAP_SYSTEST);
+
+	if (state) {
+		reg |= I2C_OMAP_SYSTEST_SCL_O;
+	} else {
+		reg &= ~I2C_OMAP_SYSTEST_SCL_O;
+	}
+
+	i2c_omap_reg_set(cfg, I2C_OMAP_SYSTEST, reg);
+}
+/**
+ * @brief Recovers the I2C bus using the OMAP I2C controller.
+ *
+ * This function attempts to recover the I2C bus by performing a bus recovery
+ * sequence using the OMAP I2C controller. It uses the provided device
+ * configuration and bit-banging operations to recover the bus.
+ *
+ * @param dev Pointer to the device structure.
+ * @return 0 on success, negative error code on failure.
+ */
+
+static int i2c_omap_recover_bus(const struct device *dev)
+{
+	const struct i2c_omap_cfg *cfg = dev->config;
+	struct i2c_bitbang bitbang_omap;
+	struct i2c_bitbang_io bitbang_omap_io = {
+		.get_sda = i2c_omap_get_sda,
+		.set_scl = i2c_omap_set_scl,
+		.set_sda = i2c_omap_set_sda,
+	};
+	uint32_t reg;
+	int error = 0;
+
+	reg = i2c_omap_reg_access(cfg, I2C_OMAP_SYSTEST);
+	reg |= I2C_OMAP_SYSTEST_ST_EN | 3 << I2C_OMAP_SYSTEST_TMODE_SHIFT | I2C_OMAP_SYSTEST_SCL_O |
+	       I2C_OMAP_SYSTEST_SDA_O;
+	i2c_omap_reg_set(cfg, I2C_OMAP_SYSTEST, reg);
+
+	i2c_bitbang_init(&bitbang_omap, &bitbang_omap_io, (void *)cfg);
+
+	error = i2c_bitbang_recover_bus(&bitbang_omap);
+	if (error != 0) {
+		LOG_ERR("failed to recover bus (err %d)", error);
+		goto restore;
+	}
+
+restore:
+	reg = i2c_omap_reg_access(cfg, I2C_OMAP_SYSTEST);
+	reg &= ~I2C_OMAP_SYSTEST_ST_EN & ~I2C_OMAP_SYSTEST_TMODE_MASK & ~I2C_OMAP_SYSTEST_SCL_O &
+	       ~I2C_OMAP_SYSTEST_SDA_O;
+	i2c_omap_reg_set(cfg, I2C_OMAP_SYSTEST, reg);
+	return error;
+}
+#endif /* CONFIG_I2C_OMAP_BUS_RECOVERY */
+
 /**
  * @brief Wait for the bus to become free (no longer busy).
  *
  * This function waits for the bus to become free by continuously checking the
  * status register of the OMAP I2C controller. If the bus remains busy for a
- * certain timeout period, the function will return timeout error.
+ * certain timeout period, the function will return attempts to recover the bus by calling
+ * i2c_omap_recover_bus().
  *
  * @param dev The I2C device structure.
  * @return 0 if the bus becomes free, or a negative error code if the bus cannot
@@ -430,7 +545,11 @@ static int i2c_omap_wait_for_bb(const struct device *dev)
 
 	while (i2c_omap_reg_access(cfg, I2C_OMAP_STAT) & I2C_OMAP_STAT_BB) {
 		if (k_uptime_get_32() > timeout) {
+#ifdef CONFIG_I2C_OMAP_BUS_RECOVERY
+			return i2c_omap_recover_bus(dev);
+#else
 			return -ETIMEDOUT;
+#endif /* CONFIG_I2C_OMAP_BUS_RECOVERY */
 		}
 		k_busy_wait(100);
 	}
@@ -741,6 +860,9 @@ static int __maybe_unused i2c_omap_transfer_polling(const struct device *dev, st
 static const struct i2c_driver_api i2c_omap_api = {
 	.transfer = i2c_omap_transfer_polling,
 	.configure = i2c_omap_configure,
+#ifdef CONFIG_I2C_OMAP_BUS_RECOVERY
+	.recover_bus = i2c_omap_recover_bus,
+#endif /* CONFIG_I2C_OMAP_BUS_RECOVERY */
 };
 
 #define I2C_OMAP_INIT(inst)                                                                        \
