@@ -6,10 +6,11 @@
 config I2C_OMAP
 	bool "TI OMAP I2C Driver"
 	default y
+    CONFIG_I2C_LOG_LEVEL=4
 	depends on DT_HAS_TI_OMAP_I2C_ENABLED
 	help
 		Enable the I2C driver for TI OMAP SoCs.
-
+    
 config I2C_OMAP_BUS_RECOVERY
 	bool "Bus recovery support"
 	depends on I2C_OMAP
