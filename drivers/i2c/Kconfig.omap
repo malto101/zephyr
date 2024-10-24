@@ -6,7 +6,7 @@
 config I2C_OMAP
 	bool "TI OMAP I2C Driver"
 	default y
-    CONFIG_I2C_LOG_LEVEL=4
+    CONFIG_I2C_LOG_LEVEL=3
 	depends on DT_HAS_TI_OMAP_I2C_ENABLED
 	help
 		Enable the I2C driver for TI OMAP SoCs.

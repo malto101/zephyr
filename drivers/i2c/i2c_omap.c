@@ -49,7 +49,7 @@ LOG_MODULE_REGISTER(omap_i2c, CONFIG_I2C_LOG_LEVEL);
 typedef struct {
 	uint8_t RESERVED_0[0x10];    /**< Reserved, offset: 0x0 */
 	__IO uint32_t SYSC;          /**< System Configuration, offset: 0x10 */
-	uint8_t RESERVED_1[0x1C];    /**< Reserved, offset: 0x14 - 0x2C */
+	uint8_t RESERVED_1[0x18];    /**< Reserved, offset: 0x14 - 0x2C */
 	__IO uint32_t IRQENABLE_SET; /**< Interrupt Enable Set, offset: 0x2C */
 	uint8_t RESERVED_2[0x4];     /**< Reserved, offset: 0x30 - 0x34 */
 	__IO uint32_t WE;            /**< Wakeup Enable, offset: 0x34 */
@@ -60,7 +60,8 @@ typedef struct {
 	__IO uint32_t SYSS;          /**< System Status, offset: 0x90 */
 	__IO uint32_t BUF;           /**< Buffer, offset: 0x94 */
 	__IO uint32_t CNT;           /**< Data Count, offset: 0x98 */
-	__IO uint32_t DATA;          /**< Data Access, offset: 0xA0 */
+	__IO uint32_t DATA;          /**< Data Access, offset: 0x9C */
+	uint8_t RESERVED_5[0x4];     /**< Reserved, offset: 0xA0 - 0xA4 */
 	__IO uint32_t CON;           /**< Configuration, offset: 0xA4 */
 	__IO uint32_t OA;            /**< Own Address, offset: 0xA8 */
 	__IO uint32_t SA;            /**< Target Address, offset: 0xAC */
@@ -648,7 +649,6 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 
 	uint16_t bits, stat;
 	int err = 0;
-	LOG_INF("Transfer message");
 	do {
 		// bits = i2c_omap_reg_access(cfg, I2C_OMAP_IE);
 		// stat = i2c_omap_reg_access(cfg, I2C_OMAP_STAT);
@@ -684,7 +684,6 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 		}
 		/* Handle receive logic */
 		if (stat & (I2C_OMAP_STAT_RRDY | I2C_OMAP_STAT_RDR)) {
-			LOG_INF("Receive data");
 			// int buffer = i2c_omap_reg_access(
 			// 	cfg, (stat & I2C_OMAP_STAT_RRDY) ? I2C_OMAP_BUF : I2C_OMAP_BUFSTAT);
 			int buffer = (stat & I2C_OMAP_STAT_RRDY) ? i2c_base_addr->BUF
@@ -697,7 +696,6 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 
 		/* Handle transmit logic */
 		if (stat & (I2C_OMAP_STAT_XRDY | I2C_OMAP_STAT_XDR)) {
-			LOG_INF("Transmit data");
 			// int buffer = i2c_omap_reg_access(
 			// 	cfg, (stat & I2C_OMAP_STAT_XRDY) ? I2C_OMAP_BUF : I2C_OMAP_BUFSTAT);
 			int buffer = (stat & I2C_OMAP_STAT_XRDY) ? i2c_base_addr->BUF
@@ -709,7 +707,7 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 		}
 
 		if (stat & I2C_OMAP_STAT_ROVR) {
-			LOG_INF("Receive overrun");
+			LOG_ERR("Receive overrun");
 			err |= I2C_OMAP_STAT_ROVR;
 			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_ROVR);
 			break;
@@ -724,7 +722,6 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 		if (!stat) {
 			data->cmd_err |= -EAGAIN;
 			return -EAGAIN;
-			LOG_INF("Status: 0x%04x", stat);
 		}
 		data->cmd_err = err;
 	} while (stat);
@@ -760,7 +757,6 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 	unsigned long time_left = 0;
 	uint16_t control_reg;
 	int result;
-	LOG_INF("Transfer message common");
 	/* Determine message direction (read or write) and update the receiver flag */
 	data->receiver = (msg->flags & I2C_MSG_READ) ? true : false;
 
@@ -822,12 +818,10 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 			// 	break;
 			// }
 			if (i2c_base_addr->STAT) {
-				LOG_INF("Status: 0x%04x", i2c_base_addr->STAT);
 				break;
 			}
 			result = -EAGAIN;
 		}
-		LOG_INF("Transfer message common loop");
 		/* Call a lower-level function to continue the transfer */
 		result = i2c_omap_transfer_message_ll(dev);
 	} while (result == -EAGAIN);
@@ -894,13 +888,11 @@ static int i2c_omap_transfer_main(const struct device *dev, struct i2c_msg msg[]
 				  bool polling, uint16_t addr)
 {
 	int ret;
-	LOG_INF("Transfer main");
 	ret = i2c_omap_wait_for_bb(dev);
 	if (ret < 0) {
 		return ret;
 	}
 	for (int msg_idx = 0; msg_idx < num; msg_idx++) {
-		LOG_INF("Transfer message %d", msg_idx);
 		ret = i2c_omap_transfer_message(dev, &msg[msg_idx], polling, addr);
 		if (ret < 0) {
 			break;
