@@ -122,10 +122,9 @@ typedef struct {
 #define I2C_OMAP_SYSTEST_SDA_O BIT(0) /* SDA line drive out */
 
 typedef void (*init_func_t)(const struct device *dev);
+#define DEV_CFG(dev)  ((const struct i2c_omap_cfg *)(dev)->config)
+#define DEV_DATA(dev) ((struct i2c_omap_data *)(dev)->data)
 #define DEV_I2C_BASE(dev) ((i2c_omap_regs_t *)DEVICE_MMIO_NAMED_GET(dev, base))
-#define DEV_I2C_CFG(dev)  ((const struct i2c_omap_cfg *)DEV_CFG(dev))
-#define DEV_I2C_DATA(dev) ((struct i2c_omap_data *)DEV_DATA(dev))
-
 struct i2c_omap_cfg {
 	DEVICE_MMIO_NAMED_ROM(base);
 	uint32_t irq;
@@ -182,7 +181,7 @@ static inline void i2c_omap_ack_stat(const struct device *dev, uint16_t stat)
  */
 static void i2c_omap_init_ll(const struct device *dev)
 {
-	struct i2c_omap_data *data = DEV_I2C_DATA(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 
 	i2c_base_addr->CON = 0;
@@ -207,7 +206,7 @@ static void i2c_omap_init_ll(const struct device *dev)
  */
 static int i2c_omap_reset(const struct device *dev)
 {
-	struct i2c_omap_data *data = DEV_I2C_DATA(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 	uint64_t timeout;
 	uint16_t sysc;
@@ -242,7 +241,7 @@ static int i2c_omap_reset(const struct device *dev)
  */
 static int i2c_omap_set_speed(const struct device *dev, uint32_t speed)
 {
-	struct i2c_omap_data *data = DEV_I2C_DATA(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 
 	/* If configured for High Speed */
 	switch (speed) {
@@ -287,10 +286,8 @@ static int i2c_omap_configure(const struct device *dev, uint32_t dev_config)
 	switch (I2C_SPEED_GET(dev_config)) {
 	case I2C_SPEED_STANDARD:
 		speed_cfg = I2C_BITRATE_STANDARD;
-		goto out;
 	case I2C_SPEED_FAST:
 		speed_cfg = I2C_BITRATE_FAST;
-		goto out;
 	default:
 		return -ENOTSUP;
 	}
@@ -316,7 +313,7 @@ static int i2c_omap_configure(const struct device *dev, uint32_t dev_config)
  */
 static void i2c_omap_transmit_receive_data(const struct device *dev, uint8_t num_bytes)
 {
-	struct i2c_omap_data *data = DEV_I2C_DATA(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 	uint8_t *buf_ptr = data->current_msg.buf;
 
@@ -341,7 +338,7 @@ static void i2c_omap_transmit_receive_data(const struct device *dev, uint8_t num
  */
 static void i2c_omap_resize_fifo(const struct device *dev, uint8_t size)
 {
-	struct i2c_omap_data *data = DEV_I2C_DATA(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 	uint16_t buf_cfg;
 
@@ -366,7 +363,7 @@ static void i2c_omap_resize_fifo(const struct device *dev, uint8_t size)
 static int i2c_omap_get_sda(void *io_context)
 {
 	const struct i2c_omap_cfg *cfg = (const struct i2c_omap_cfg *)io_context;
-	I2C_OMAP_Type *i2c_base_addr = (I2C_OMAP_Type *)cfg->base.addr;
+	i2c_omap_regs_t *i2c_base_addr = (i2c_omap_regs_t *)cfg->base.addr;
 	uint32_t reg = i2c_base_addr->SYSTEST;
 
 	return reg & I2C_OMAP_SYSTEST_SDA_I_FUNC;
@@ -383,7 +380,7 @@ static int i2c_omap_get_sda(void *io_context)
 static void i2c_omap_set_sda(void *io_context, int state)
 {
 	const struct i2c_omap_cfg *cfg = (const struct i2c_omap_cfg *)io_context;
-	I2C_OMAP_Type *i2c_base_addr = (I2C_OMAP_Type *)cfg->base.addr;
+	i2c_omap_regs_t *i2c_base_addr = (i2c_omap_regs_t *)cfg->base.addr;
 	uint32_t reg = i2c_base_addr->SYSTEST;
 
 	if (state) {
@@ -405,7 +402,7 @@ static void i2c_omap_set_sda(void *io_context, int state)
 static void i2c_omap_set_scl(void *io_context, int state)
 {
 	const struct i2c_omap_cfg *cfg = (const struct i2c_omap_cfg *)io_context;
-	I2C_OMAP_Type *i2c_base_addr = (I2C_OMAP_Type *)cfg->base.addr;
+	i2c_omap_regs_t *i2c_base_addr = (i2c_omap_regs_t *)cfg->base.addr;
 	uint32_t reg = i2c_base_addr->SYSTEST;
 
 	if (state) {
@@ -428,8 +425,8 @@ static void i2c_omap_set_scl(void *io_context, int state)
 
 static int i2c_omap_recover_bus(const struct device *dev)
 {
-	const struct i2c_omap_cfg *cfg = DEV_I2C_CFG(dev);
-	I2C_OMAP_Type *i2c_base_addr = DEV_I2C_BASE(dev);
+	const struct i2c_omap_cfg *cfg = DEV_CFG(dev);
+	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 
 	struct i2c_bitbang bitbang_omap;
 	struct i2c_bitbang_io bitbang_omap_io = {
@@ -505,7 +502,7 @@ static int i2c_omap_wait_for_bb(const struct device *dev)
  */
 static int i2c_omap_transfer_message_ll(const struct device *dev)
 {
-	struct i2c_omap_data *data = DEV_I2C_DATA(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 	uint16_t bits, stat;
 	int err = 0;
@@ -597,7 +594,7 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *msg, bool polling,
 				     uint16_t addr)
 {
-	struct i2c_omap_data *data = DEV_I2C_DATA(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 	unsigned long time_left = 0;
 	uint16_t control_reg;
@@ -731,7 +728,7 @@ static int i2c_omap_transfer_main(const struct device *dev, struct i2c_msg msg[]
  */
 static void i2c_omap_isr(const struct device *dev)
 {
-	struct i2c_omap_data *data = DEV_I2C_DATA(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 
 	if (i2c_base_addr->STAT & i2c_base_addr->IE & ~I2C_OMAP_STAT_NACK) {
@@ -777,8 +774,8 @@ static const struct i2c_driver_api i2c_omap_api = {
  */
 static int i2c_omap_init(const struct device *dev)
 {
-	struct i2c_omap_data *data = DEV_I2C_DATA(dev);
-	const struct i2c_omap_cfg *cfg = DEV_I2C_CFG(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
+	const struct i2c_omap_cfg *cfg = DEV_CFG(dev);
 
 	k_sem_init(&data->cmd_complete, 0, 1);
 	/* Set the speed for I2C */
