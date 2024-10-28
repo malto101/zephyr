@@ -194,6 +194,9 @@ static unsigned omap_mcspi_transceive(const struct device *dev, const struct spi
 			tx_data = 0U;
 		}
 	}
+out:
+    spi_context_release(ctx, err);
+    return err;
 }
 
 static const struct spi_driver_api spi_omap_driver_api = {
