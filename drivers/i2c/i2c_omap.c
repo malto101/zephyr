@@ -505,7 +505,6 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 	uint16_t bits, stat;
-	int err = 0;
 
 	do {
 		bits = i2c_base_addr->IE;
@@ -517,11 +516,11 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 			stat &= ~(I2C_OMAP_STAT_RDR | I2C_OMAP_STAT_RRDY);
 		}
 		if (stat & I2C_OMAP_STAT_NACK) {
-			err |= I2C_OMAP_STAT_NACK;
+			data->cmd_err = I2C_OMAP_STAT_NACK;
 			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_NACK);
 		}
 		if (stat & I2C_OMAP_STAT_AL) {
-			err |= I2C_OMAP_STAT_AL;
+			data->cmd_err = I2C_OMAP_STAT_AL;
 			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_AL);
 		}
 		if (stat & I2C_OMAP_STAT_ARDY) {
@@ -553,13 +552,13 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 		}
 		if (stat & I2C_OMAP_STAT_ROVR) {
 			LOG_ERR("Receive overrun");
-			err |= I2C_OMAP_STAT_ROVR;
+			data->cmd_err = I2C_OMAP_STAT_ROVR;
 			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_ROVR);
 			break;
 		}
 		if (stat & I2C_OMAP_STAT_XUDF) {
 			LOG_ERR("Transmit underflow");
-			err |= I2C_OMAP_STAT_XUDF;
+			data->cmd_err = I2C_OMAP_STAT_XUDF;
 			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_XUDF);
 			break;
 		}
@@ -567,9 +566,8 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 			data->cmd_err |= -EAGAIN;
 			return -EAGAIN;
 		}
-		data->cmd_err = err;
 	} while (stat);
-	return err;
+	return data->cmd_err;
 }
 
 /**
@@ -638,7 +636,6 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 	/* Start the I2C transfer by writing the control register */
 	i2c_base_addr->CON = control_reg;
 	/* Wait for the transfer to complete by polling */
-	do {
 		/* Poll for status until the transfer is complete */
 		for (uint8_t retries = 0; retries < 5; retries++) {
 			if (i2c_base_addr->STAT) {
@@ -648,7 +645,6 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 		}
 		/* Call a lower-level function to continue the transfer */
 		result = i2c_omap_transfer_message_ll(dev);
-	} while (result == -EAGAIN);
 	time_left = !result;
 	/* Handle timeout or specific error conditions */
 	if (time_left == 0 || (data->cmd_err & (I2C_OMAP_STAT_ROVR | I2C_OMAP_STAT_XUDF))) {
