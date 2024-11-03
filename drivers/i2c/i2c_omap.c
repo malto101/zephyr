@@ -563,7 +563,7 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 			break;
 		}
 		if (!stat) {
-			data->cmd_err |= -EAGAIN;
+			data->cmd_err = -EAGAIN;
 			return -EAGAIN;
 		}
 	} while (stat);
@@ -635,30 +635,25 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 	}
 	/* Start the I2C transfer by writing the control register */
 	i2c_base_addr->CON = control_reg;
-	/* Wait for the transfer to complete by polling */
-		/* Poll for status until the transfer is complete */
-		for (uint8_t retries = 0; retries < 5; retries++) {
-			if (i2c_base_addr->STAT) {
-				break;
-			}
-			result = -EAGAIN;
+	/* Poll for status until the transfer is complete */
+	for (uint8_t retries = 0; retries < 5 || i2c_base_addr->STAT; retries++) {
+		if (retries == 4) {
+			return -ETIMEDOUT;
 		}
-		/* Call a lower-level function to continue the transfer */
-		result = i2c_omap_transfer_message_ll(dev);
-	time_left = !result;
+		k_busy_wait(100);
+	}
+	/* Call a lower-level function to continue the transfer */
+	result = i2c_omap_transfer_message_ll(dev);
 	/* Handle timeout or specific error conditions */
-	if (time_left == 0 || (data->cmd_err & (I2C_OMAP_STAT_ROVR | I2C_OMAP_STAT_XUDF))) {
+	if (data->cmd_err & (I2C_OMAP_STAT_ROVR | I2C_OMAP_STAT_XUDF)) {
 		i2c_omap_reset(dev);
 		i2c_omap_init_ll(dev);
 		/* Return an error code based on whether it was a timeout or buffer error */
-		if (time_left == 0) {
-			return -ETIMEDOUT;
-		}
 		return -EIO; /* Receiver overrun or transmitter underflow */
 	}
 	/* Handle arbitration loss and NACK errors */
-	if (data->cmd_err & (I2C_OMAP_STAT_AL | I2C_OMAP_STAT_NACK)) {
-		if (data->cmd_err & I2C_OMAP_STAT_AL) {
+	if (data->cmd_err & (I2C_OMAP_STAT_AL | I2C_OMAP_STAT_NACK | -EAGAIN)) {
+		if (data->cmd_err & (I2C_OMAP_STAT_AL | -EAGAIN)) {
 			return -EAGAIN; /* Retry on arbitration loss */
 		}
 		if (data->cmd_err & I2C_OMAP_STAT_NACK) {
