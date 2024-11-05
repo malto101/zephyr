@@ -786,8 +786,9 @@ static int i2c_omap_init(const struct device *dev)
                                                                                                    \
 	static void i2c_omap_##inst##_init(const struct device *dev)                               \
 	{                                                                                          \
-		IRQ_CONNECT(DT_INST_IRQN(inst), DT_INST_IRQ(inst, priority), i2c_omap_isr,         \
-			    DEVICE_DT_INST_GET(inst), DT_INST_IRQ(inst, sense));                   \
+		DEVICE_MMIO_NAMED_MAP(dev, base, K_MEM_CACHE_NONE);		\
+		IRQ_CONNECT(DT_INST_IRQN(inst), DT_INST_IRQ(inst, priority),	\
+			    i2c_omap_isr, DEVICE_DT_INST_GET(inst), 0);                   \
                                                                                                    \
 		irq_enable(DT_INST_IRQN(inst));                                                    \
 	};

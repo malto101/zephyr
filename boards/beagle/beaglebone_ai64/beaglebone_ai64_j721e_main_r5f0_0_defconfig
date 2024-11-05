@@ -19,3 +19,6 @@ CONFIG_UART_CONSOLE=y
 
 # Enable Mailbox
 CONFIG_MBOX=y
+
+# Enable I2C
+CONFIG_I2C=y
