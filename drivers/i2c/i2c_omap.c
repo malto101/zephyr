@@ -22,7 +22,7 @@ LOG_MODULE_REGISTER(omap_i2c, CONFIG_I2C_LOG_LEVEL);
 #define I2C_OMAP_TIMEOUT    100U
 /* OCP_SYSSTATUS bit definitions */
 #define SYSS_RESETDONE_MASK BIT(0)
-
+#define RETRY 1
 #define I2C_BITRATE_FAST     400000
 #define I2C_BITRATE_STANDARD 100000
 
@@ -193,7 +193,7 @@ static void i2c_omap_init_ll(const struct device *dev)
 	uint16_t iestate = (I2C_OMAP_IE_XRDY | I2C_OMAP_IE_RRDY | I2C_OMAP_IE_ARDY |
 			    I2C_OMAP_IE_NACK | I2C_OMAP_IE_AL) |
 			   ((data->current_msg.len) ? (I2C_OMAP_IE_RDR | I2C_OMAP_IE_XDR) : 0);
-	i2c_base_addr->IRQENABLE_SET = iestate;
+	// i2c_base_addr->IRQENABLE_SET = iestate;
 }
 
 /**
@@ -449,10 +449,8 @@ static int i2c_omap_recover_bus(const struct device *dev)
 	}
 
 restore:
-	reg = i2c_base_addr->SYSTEST;
-	reg &= ~I2C_OMAP_SYSTEST_ST_EN & ~I2C_OMAP_SYSTEST_TMODE_MASK & ~I2C_OMAP_SYSTEST_SCL_O &
-	       ~I2C_OMAP_SYSTEST_SDA_O;
-	i2c_base_addr->SYSTEST = reg;
+	i2c_base_addr->SYSTEST &= ~(I2C_OMAP_SYSTEST_ST_EN | I2C_OMAP_SYSTEST_TMODE_MASK | I2C_OMAP_SYSTEST_SCL_O | I2C_OMAP_SYSTEST_SDA_O);
+	i2c_omap_reset(dev);
 	return error;
 }
 #endif /* CONFIG_I2C_OMAP_BUS_RECOVERY */
@@ -504,71 +502,65 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 {
 	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
-	uint16_t bits, stat;
+	uint16_t stat = i2c_base_addr->STAT;
 
-	do {
-		bits = i2c_base_addr->IE;
-		stat = i2c_base_addr->STAT;
-		stat |= bits;
-		if (data->receiver) {
-			stat &= ~(I2C_OMAP_STAT_XDR | I2C_OMAP_STAT_XRDY);
-		} else {
-			stat &= ~(I2C_OMAP_STAT_RDR | I2C_OMAP_STAT_RRDY);
-		}
-		if (stat & I2C_OMAP_STAT_NACK) {
-			data->cmd_err = I2C_OMAP_STAT_NACK;
-			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_NACK);
-		}
-		if (stat & I2C_OMAP_STAT_AL) {
-			data->cmd_err = I2C_OMAP_STAT_AL;
-			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_AL);
-		}
-		if (stat & I2C_OMAP_STAT_ARDY) {
-			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_ARDY);
-		}
-		if (stat & (I2C_OMAP_STAT_ARDY | I2C_OMAP_STAT_NACK | I2C_OMAP_STAT_AL)) {
-			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_RRDY | I2C_OMAP_STAT_RDR |
-						       I2C_OMAP_STAT_XRDY | I2C_OMAP_STAT_XDR |
-						       I2C_OMAP_STAT_ARDY);
-			break;
-		}
-		/* Handle receive logic */
-		if (stat & (I2C_OMAP_STAT_RRDY | I2C_OMAP_STAT_RDR)) {
-			int buffer = (stat & I2C_OMAP_STAT_RRDY) ? i2c_base_addr->BUF
-								 : i2c_base_addr->BUFSTAT;
-			i2c_omap_transmit_receive_data(dev, buffer);
-			i2c_omap_ack_stat(dev, stat & I2C_OMAP_STAT_RRDY ? I2C_OMAP_STAT_RRDY
-									 : I2C_OMAP_STAT_RDR);
-			continue;
-		}
-		/* Handle transmit logic */
-		if (stat & (I2C_OMAP_STAT_XRDY | I2C_OMAP_STAT_XDR)) {
-			int buffer = (stat & I2C_OMAP_STAT_XRDY) ? i2c_base_addr->BUF
-								 : i2c_base_addr->BUFSTAT;
-			i2c_omap_transmit_receive_data(dev, buffer);
-			i2c_omap_ack_stat(dev, (stat & I2C_OMAP_STAT_XRDY) ? I2C_OMAP_STAT_XRDY
-									   : I2C_OMAP_STAT_XDR);
-			continue;
-		}
-		if (stat & I2C_OMAP_STAT_ROVR) {
-			LOG_ERR("Receive overrun");
-			data->cmd_err = I2C_OMAP_STAT_ROVR;
-			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_ROVR);
-			break;
-		}
-		if (stat & I2C_OMAP_STAT_XUDF) {
-			LOG_ERR("Transmit underflow");
-			data->cmd_err = I2C_OMAP_STAT_XUDF;
-			i2c_omap_ack_stat(dev, I2C_OMAP_STAT_XUDF);
-			break;
-		}
-		if (!stat) {
-			data->cmd_err = -EAGAIN;
-			return -EAGAIN;
-		}
-	} while (stat);
-	return data->cmd_err;
+	// Clear irrelevant status bits based on receiver mode
+	if (data->receiver) {
+		stat &= ~(I2C_OMAP_STAT_XDR | I2C_OMAP_STAT_XRDY);
+	} else {
+		stat &= ~(I2C_OMAP_STAT_RDR | I2C_OMAP_STAT_RRDY);
+	}
+
+	// Handle various statuses
+	if (stat & I2C_OMAP_STAT_NACK) {
+		data->cmd_err =  -I2C_OMAP_STAT_NACK;
+		i2c_omap_ack_stat(dev, I2C_OMAP_STAT_NACK);
+	}
+	if (stat & I2C_OMAP_STAT_AL) {
+		data->cmd_err =  -I2C_OMAP_STAT_AL;
+		i2c_omap_ack_stat(dev, I2C_OMAP_STAT_AL);
+	}
+	if (stat & I2C_OMAP_STAT_ARDY) {
+		i2c_omap_ack_stat(dev, I2C_OMAP_STAT_ARDY);
+	}
+	if (stat & (I2C_OMAP_STAT_ARDY | I2C_OMAP_STAT_NACK | I2C_OMAP_STAT_AL)) {
+		i2c_omap_ack_stat(dev, I2C_OMAP_STAT_RRDY | I2C_OMAP_STAT_RDR |
+							I2C_OMAP_STAT_XRDY | I2C_OMAP_STAT_XDR |
+							I2C_OMAP_STAT_ARDY);
+		return data->cmd_err;
+	}
+
+	// Handle receive logic
+	if (stat & (I2C_OMAP_STAT_RRDY | I2C_OMAP_STAT_RDR)) {
+		int buffer = (stat & I2C_OMAP_STAT_RRDY) ? i2c_base_addr->BUF : i2c_base_addr->BUFSTAT;
+		i2c_omap_transmit_receive_data(dev, buffer);
+		i2c_omap_ack_stat(dev, (stat & I2C_OMAP_STAT_RRDY) ? I2C_OMAP_STAT_RRDY : I2C_OMAP_STAT_RDR);
+		return RETRY;  // Indicate that another transfer step is needed
+	}
+
+	// Handle transmit logic
+	if (stat & (I2C_OMAP_STAT_XRDY | I2C_OMAP_STAT_XDR)) {
+		int buffer = (stat & I2C_OMAP_STAT_XRDY) ? i2c_base_addr->BUF : i2c_base_addr->BUFSTAT;
+		i2c_omap_transmit_receive_data(dev, buffer);
+		i2c_omap_ack_stat(dev, (stat & I2C_OMAP_STAT_XRDY) ? I2C_OMAP_STAT_XRDY : I2C_OMAP_STAT_XDR);
+		return RETRY;  // Indicate that another transfer step is needed
+	}
+
+	if (stat & I2C_OMAP_STAT_ROVR) {
+		data->cmd_err =  -I2C_OMAP_STAT_ROVR;
+		i2c_omap_ack_stat(dev, I2C_OMAP_STAT_ROVR);
+		return data->cmd_err;
+	}
+	if (stat & I2C_OMAP_STAT_XUDF) {
+		data->cmd_err =  -I2C_OMAP_STAT_XUDF;
+		i2c_omap_ack_stat(dev, I2C_OMAP_STAT_XUDF);
+		return data->cmd_err;
+	}
+
+	// If no relevant status bits are set, retry the transfer
+	return RETRY;
 }
+
 
 /**
  * @brief Performs an I2C transfer of a single message.
@@ -594,7 +586,7 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 {
 	struct i2c_omap_data *data = DEV_DATA(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
-	unsigned long time_left = 0;
+	unsigned long time_left = 1000;
 	uint16_t control_reg;
 	int result;
 	/* Determine message direction (read or write) and update the receiver flag */
@@ -636,14 +628,17 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 	/* Start the I2C transfer by writing the control register */
 	i2c_base_addr->CON = control_reg;
 	/* Poll for status until the transfer is complete */
-	for (uint8_t retries = 0; retries < 5 || i2c_base_addr->STAT; retries++) {
-		if (retries == 4) {
-			return -ETIMEDOUT;
-		}
-		k_busy_wait(100);
-	}
 	/* Call a lower-level function to continue the transfer */
-	result = i2c_omap_transfer_message_ll(dev);
+	do {
+		result = i2c_omap_transfer_message_ll(dev);
+		time_left--;
+	} while (result == RETRY && time_left);
+	
+	/* If no errors occurred, return success */
+	if (!data->cmd_err) {
+		return 0;
+	}
+	
 	/* Handle timeout or specific error conditions */
 	if (data->cmd_err & (I2C_OMAP_STAT_ROVR | I2C_OMAP_STAT_XUDF)) {
 		i2c_omap_reset(dev);
@@ -652,23 +647,18 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 		return -EIO; /* Receiver overrun or transmitter underflow */
 	}
 	/* Handle arbitration loss and NACK errors */
-	if (data->cmd_err & (I2C_OMAP_STAT_AL | I2C_OMAP_STAT_NACK | -EAGAIN)) {
-		if (data->cmd_err & (I2C_OMAP_STAT_AL | -EAGAIN)) {
-			return -EAGAIN; /* Retry on arbitration loss */
-		}
-		if (data->cmd_err & I2C_OMAP_STAT_NACK) {
-			if (msg->flags) {
-				return 0; /* If this message can tolerate a NACK, return success */
-			}
-			/* Issue a STOP condition after NACK */
-			i2c_base_addr->CON |= I2C_OMAP_CON_STP;
-			return -ENOMSG; /* Indicate a message error due to NACK */
-		}
+	if (data->cmd_err & (I2C_OMAP_STAT_AL | -EAGAIN)) {
+		return -EAGAIN; 
 	}
-	/* If no errors occurred, return success */
-	if (!data->cmd_err) {
-		return 0;
+	if (data->cmd_err & I2C_OMAP_STAT_NACK) {
+		if (msg->flags) {
+			return 0; /* If this message can tolerate a NACK, return success */
+		}
+		/* Issue a STOP condition after NACK */
+		i2c_base_addr->CON |= I2C_OMAP_CON_STP;
+		return -ENOMSG; /* Indicate a message error due to NACK */
 	}
+	
 	/* Return a general I/O error if no specific error conditions matched */
 	return -EIO;
 }
