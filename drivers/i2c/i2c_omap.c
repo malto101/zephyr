@@ -149,7 +149,7 @@ struct i2c_omap_data {
 	enum i2c_omap_speed speed;
 	struct i2c_omap_speed_config speed_config;
 	struct i2c_msg current_msg;
-	struct k_sem cmd_complete;
+	struct k_sem lock;
 	bool receiver;
 	bool bb_valid;
 };
@@ -280,25 +280,28 @@ static int i2c_omap_set_speed(const struct device *dev, uint32_t speed)
 static int i2c_omap_configure(const struct device *dev, uint32_t dev_config)
 {
 	uint32_t speed_cfg;
-	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 
 	switch (I2C_SPEED_GET(dev_config)) {
 	case I2C_SPEED_STANDARD:
 		speed_cfg = I2C_BITRATE_STANDARD;
+		break;
 	case I2C_SPEED_FAST:
 		speed_cfg = I2C_BITRATE_FAST;
+		break;
 	default:
 		return -ENOTSUP;
 	}
 	if ((dev_config & I2C_MODE_CONTROLLER) != I2C_MODE_CONTROLLER) {
 		return -ENOTSUP;
 	}
-	if ((dev_config & I2C_MSG_ADDR_10_BITS) != I2C_MSG_ADDR_10_BITS) {
-		return -ENOTSUP;
-	}
-	i2c_base_addr->CON = 0;
+	// if ((dev_config & I2C_MSG_ADDR_10_BITS) != I2C_MSG_ADDR_10_BITS) {
+	// 	return -ENOTSUP;
+	// }
+	k_sem_take(&data->lock, K_FOREVER);
 	i2c_omap_set_speed(dev, speed_cfg);
 	i2c_omap_init_ll(dev);
+	k_sem_give(&data->lock);
 	return 0;
 }
 
@@ -426,6 +429,7 @@ static int i2c_omap_recover_bus(const struct device *dev)
 {
 	const struct i2c_omap_cfg *cfg = DEV_CFG(dev);
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
+	struct i2c_omap_data *data = DEV_DATA(dev);
 
 	struct i2c_bitbang bitbang_omap;
 	struct i2c_bitbang_io bitbang_omap_io = {
@@ -435,6 +439,7 @@ static int i2c_omap_recover_bus(const struct device *dev)
 	};
 	uint32_t reg;
 	int error = 0;
+	k_sem_take(&data->lock, K_FOREVER);
 
 	reg = i2c_base_addr->SYSTEST;
 	reg |= I2C_OMAP_SYSTEST_ST_EN | 3 << I2C_OMAP_SYSTEST_TMODE_SHIFT | I2C_OMAP_SYSTEST_SCL_O |
@@ -450,6 +455,7 @@ static int i2c_omap_recover_bus(const struct device *dev)
 restore:
 	i2c_base_addr->SYSTEST &= ~(I2C_OMAP_SYSTEST_ST_EN | I2C_OMAP_SYSTEST_TMODE_MASK | I2C_OMAP_SYSTEST_SCL_O | I2C_OMAP_SYSTEST_SDA_O);
 	i2c_omap_reset(dev);
+	k_sem_give(&data->lock);
 	return error;
 }
 #endif /* CONFIG_I2C_OMAP_BUS_RECOVERY */
@@ -551,7 +557,7 @@ static int i2c_omap_transfer_message_ll(const struct device *dev)
 		return result;
 	}
 	if (stat & I2C_OMAP_STAT_XUDF) {
-		result |=  -I2C_OMAP_STAT_XUDF;
+		result |=  I2C_OMAP_STAT_XUDF;
 		i2c_omap_ack_stat(dev, I2C_OMAP_STAT_XUDF);
 		return result;
 	}
@@ -606,7 +612,7 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 	i2c_base_addr->BUF = control_reg;
 	/* If we're not polling, reset the command completion semaphore */
 	if (!polling) {
-		k_sem_reset(&data->cmd_complete);
+		k_sem_reset(&data->lock);
 	}
 	/* Reset the command error status */
 	/* Prepare the control register for the I2C operation */
@@ -649,9 +655,6 @@ static int i2c_omap_transfer_message(const struct device *dev, struct i2c_msg *m
 		return -EAGAIN; 
 	}
 	if (result & I2C_OMAP_STAT_NACK) {
-		if (msg->flags) {
-			return 0; /* If this message can tolerate a NACK, return success */
-		}
 		/* Issue a STOP condition after NACK */
 		i2c_base_addr->CON |= I2C_OMAP_CON_STP;
 		return -ENOMSG; /* Indicate a message error due to NACK */
@@ -681,7 +684,9 @@ static int i2c_omap_transfer_main(const struct device *dev, struct i2c_msg msg[]
 				  bool polling, uint16_t addr)
 {
 	int ret;
+	struct i2c_omap_data *data = DEV_DATA(dev);
 
+	k_sem_take(&data->lock, K_FOREVER);
 	ret = i2c_omap_wait_for_bb(dev);
 	if (ret < 0) {
 		return ret;
@@ -692,6 +697,7 @@ static int i2c_omap_transfer_main(const struct device *dev, struct i2c_msg msg[]
 			break;
 		}
 	}
+	k_sem_give(&data->lock);
 	i2c_omap_wait_for_bb(dev);
 	return ret;
 }
@@ -711,7 +717,7 @@ static void i2c_omap_isr(const struct device *dev)
 	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
 
 	if (i2c_base_addr->STAT & i2c_base_addr->IE & ~I2C_OMAP_STAT_NACK) {
-		k_sem_give(&data->cmd_complete);
+		k_sem_give(&data->lock);
 	}
 }
 
@@ -756,7 +762,7 @@ static int i2c_omap_init(const struct device *dev)
 	struct i2c_omap_data *data = DEV_DATA(dev);
 	const struct i2c_omap_cfg *cfg = DEV_CFG(dev);
 
-	k_sem_init(&data->cmd_complete, 0, 1);
+	k_sem_init(&data->lock, 1, 1);
 	/* Set the speed for I2C */
 	if (i2c_omap_set_speed(dev, cfg->speed)) {
 		LOG_ERR("Failed to set speed");
