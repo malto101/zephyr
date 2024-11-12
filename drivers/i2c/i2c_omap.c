@@ -54,14 +54,6 @@ typedef struct {
 	__IO uint32_t BUFSTAT;       /**< Buffer Status, offset: 0xC0 */
 } i2c_omap_regs_t;
 
-/* I2C Interrupt Enable Register (I2C_OMAP_IE) */
-#define I2C_OMAP_IE_XDR  BIT(14) /* TX Buffer drain interrupt enable */
-#define I2C_OMAP_IE_RDR  BIT(13) /* RX Buffer drain interrupt enable */
-#define I2C_OMAP_IE_XRDY BIT(4)  /* TX data ready interrupt enable */
-#define I2C_OMAP_IE_RRDY BIT(3)  /* RX data ready interrupt enable */
-#define I2C_OMAP_IE_ARDY BIT(2)  /* Access ready interrupt enable */
-#define I2C_OMAP_IE_NACK BIT(1)  /* No acknowledgment interrupt enable */
-#define I2C_OMAP_IE_AL   BIT(0)  /* Arbitration lost interrupt enable */
 
 /* I2C Configuration Register (I2C_OMAP_CON) */
 #define I2C_OMAP_CON_EN        BIT(15) /* I2C module enable */
@@ -113,7 +105,6 @@ struct i2c_omap_cfg {
 	DEVICE_MMIO_NAMED_ROM(base);
 	uint32_t irq;
 	uint32_t speed;
-	init_func_t init_func;
 };
 
 enum i2c_omap_speed {
@@ -156,10 +147,6 @@ static void i2c_omap_init_ll(const struct device *dev)
 	i2c_base_addr->SCLL = data->speed_config.scllstate;
 	i2c_base_addr->SCLH = data->speed_config.sclhstate;
 	i2c_base_addr->CON = I2C_OMAP_CON_EN;
-	uint16_t iestate = (I2C_OMAP_IE_XRDY | I2C_OMAP_IE_RRDY | I2C_OMAP_IE_ARDY |
-			    I2C_OMAP_IE_NACK | I2C_OMAP_IE_AL) |
-			   ((data->current_msg.len) ? (I2C_OMAP_IE_RDR | I2C_OMAP_IE_XDR) : 0);
-	i2c_base_addr->IRQENABLE_SET = iestate;
 }
 
 /**
@@ -657,25 +644,6 @@ static int i2c_omap_transfer_main(const struct device *dev, struct i2c_msg msg[]
 }
 
 /**
- * @brief OMAP I2C ISR function.
- *
- * This function is the interrupt service routine for OMAP I2C.
- * It checks the status and interrupt enable registers to determine if the
- * transfer is complete, and signals the completion using a semaphore.
- *
- * @param dev Pointer to the I2C device structure.
- */
-static void i2c_omap_isr(const struct device *dev)
-{
-	struct i2c_omap_data *data = DEV_DATA(dev);
-	i2c_omap_regs_t *i2c_base_addr = DEV_I2C_BASE(dev);
-
-	if (i2c_base_addr->STAT & i2c_base_addr->IE & ~I2C_OMAP_STAT_NACK) {
-		k_sem_give(&data->lock);
-	}
-}
-
-/**
  * @brief OMAP I2C transfer function using polling.
  *
  * This function performs the I2C transfer using the OMAP I2C controller
@@ -728,11 +696,9 @@ static int i2c_omap_init(const struct device *dev)
 
 #define I2C_OMAP_INIT(inst)                                                                        \
 	LOG_INSTANCE_REGISTER(omap_i2c, inst, CONFIG_I2C_LOG_LEVEL);                               \
-	static void i2c_omap_##inst##_init(const struct device *dev);                              \
 	static const struct i2c_omap_cfg i2c_omap_cfg_##inst = {                                   \
 		DEVICE_MMIO_NAMED_ROM_INIT(base, DT_DRV_INST(inst)),                               \
 		.irq = DT_INST_IRQN(inst),                                                         \
-		.init_func = i2c_omap_##inst##_init,                                               \
 		.speed = DT_INST_PROP(inst, clock_frequency),                                      \
 	};                                                                                         \
                                                                                                    \
@@ -742,12 +708,5 @@ static int i2c_omap_init(const struct device *dev)
 				  &i2c_omap_cfg_##inst, POST_KERNEL, CONFIG_I2C_INIT_PRIORITY,     \
 				  &i2c_omap_api);                                                  \
                                                                                                    \
-	static void i2c_omap_##inst##_init(const struct device *dev)                               \
-	{                                                                                          \
-		DEVICE_MMIO_NAMED_MAP(dev, base, K_MEM_CACHE_NONE);                                \
-		IRQ_CONNECT(DT_INST_IRQN(inst), DT_INST_IRQ(inst, priority), i2c_omap_isr,         \
-			    DEVICE_DT_INST_GET(inst), 0);                                          \
-                                                                                                   \
-		irq_enable(DT_INST_IRQN(inst));                                                    \
-	};
+
 DT_INST_FOREACH_STATUS_OKAY(I2C_OMAP_INIT)
