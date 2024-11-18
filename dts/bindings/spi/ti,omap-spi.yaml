@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+# Description: YAML binding file for the TI OMAP SPI driver with per-CS configuration
+
+description: |
+  Binding for the SPI controller found in TI OMAP SoCs, allowing per-chip-select 
+  configuration of SPI word length, frequency, and mode.
+
+compatible: ti,omap-spi
+
+include: spi-controller.yaml
+
+properties:
+  reg:
+    type: array
+    description: Base address and size of the SPI register set.
+
+  interrupts:
+    type: array
+    description: SPI interrupt line.
+
+  spi-max-frequency:
+    type: int
+    description: Maximum SPI clock frequency supported by the controller.
+    required: true
+
+  pinctrl-0:
+    description: Pin control groups for this SPI instance.
+    required: true
+
+  pinctrl-names:
+    description: Names for the pin control groups.
+    required: true
+
+    # spi@48030000 {
+    #   compatible = "ti,omap-spi";
+    #   reg = <0x48030000 0x1000>;
+    #   interrupts = <27>;
+    #   spi-max-frequency = <48000000>;
+    #   clock-frequency = <19200000>;
+    #   cs-config = <0 8 1000000 0>,  /* CS0: 8-bit word, 1 MHz, Mode 0 */
+    #               <3 16 2000000 3>; /* CS3: 16-bit word, 2 MHz, Mode 3 */
+    # };

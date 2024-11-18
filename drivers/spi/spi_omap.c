@@ -15,6 +15,14 @@ LOG_MODULE_REGISTER(spi_omap, CONFIG_SPI_LOG_LEVEL);
 #define DEV_DATA(dev)         ((struct spi_omap_data *)(dev)->data)
 #define DEV_SPI_CFG_BASE(dev) ((struct spi_omap_reg_t *)DEVICE_MMIO_NAMED_GET(dev, port_base))
 
+/* SPI trnasfer status */
+#define MCSPI_TRANSFER_COMPLETED        (0U)
+#define MCSPI_TRANSFER_STARTED          (1U)
+#define MCSPI_TRANSFER_CANCELLED        (2U)
+#define MCSPI_TRANSFER_FAILED           (3U)
+#define MCSPI_TRANSFER_CSN_DEASSERT     (4U)
+#define MCSPI_TRANSFER_TIMEOUT          (5U)
+
 /* SPI register offsets */
 
 typedef struct {
@@ -79,30 +87,45 @@ typedef struct {
 #define OMAP_MCSPI_CHXCONF_FFER        BIT(28)      /* FIFO enable for receive*/
 #define OMAP_MCSPI_CHXCONF_CLKG        BIT(29) /* Clock divider granularity ->1 clock cycle granularity*/
 
+/* MCSPI_CH(0/1/2/3)CTRL register bits */
+#define OMAP_MCSPI_CHXCTRL_EN           BIT(0) /* Channel enable*/
+
 /* MCSPI_MODULCTRL register bits */
 #define OMAP_MCSPI_MODULCTRL_SINGLE BIT(0) /* Single or multi-channel mode*/
 #define OMAP_MCSPI_MODULCTRL_MS     BIT(2) /* Enable slave mode*/
 #define OMAP_MCSPI_MODULCTRL_STEST  BIT(3) /* Enable System test mode*/
 
+/* MCSPI_CH(0/1/2/3)STAT register bits */
+#define OMAP_MCSPI_CHSTAT_RXS		BIT(0)	/* RX shift*/
+#define OMAP_MCSPI_CHSTAT_TXS		BIT(1)	/* TX shift*/
+#define OMAP_MCSPI_CHSTAT_EOT		BIT(2)	/* End of transfer*/
+#define OMAP_MCSPI_CHSTAT_TXFFE		BIT(3)	/* TX FIFO empty*/
+
 struct spi_omap_config {
 	DEVICE_MMIO_NAMED_ROM(base);
-	struct spi_config spi_cfg;
 	uint32_t irq;
-	uint32_t frequency;
+	
 };
+
+struct spi_cs_omap_data (
+	uint32_t chconf, chctrl;
+);
 
 struct spi_omap_data {
 	DEVICE_MMIO_NAMED_RAM(base);
 	struct spi_context ctx;
-}
+	uint8_t xfer_status;
+	struct spi_cs_omap_data cs_data;
+};
 
 static int
-spi_omap_configure(const struct device *dev, const struct spi_config *config)
+omap_spi_configure(const struct device *dev, const struct spi_config *config)
 {
 	const struct spi_omap_config *omap_cfg = DEV_CFG(dev);
 	struct spi_omap_data *omap_data = DEV_DATA(dev);
 	struct spi_context *ctx = &omap_data->ctx;
 	struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
+	uint32_t word_size = SPI_WORD_SIZE_GET(config->operation);
 
 	if (spi_context_configured(ctx, config)) {
 		return 0;
@@ -113,8 +136,8 @@ spi_omap_configure(const struct device *dev, const struct spi_config *config)
 		return -ENOTSUP;
 	}
 
-	if (SPI_WORD_SIZE_GET(config->operation) != 8) {
-		LOG_ERR("Word sizes other than 8 bits are not supported");
+	if (word_size != 8 && word_size != 16 && word_size != 32) {
+		LOG_ERR("Only 8, 16, and 32-bit word sizes are supported");
 		return -ENOTSUP;
 	}
 
@@ -135,6 +158,7 @@ spi_omap_configure(const struct device *dev, const struct spi_config *config)
 
 	return 0;
 }
+
 static int omap_mcspi_controller_init(const struct device *dev)
 {
 	const struct spi_omap_config *omap_cfg = DEV_CFG(dev);
@@ -143,7 +167,7 @@ static int omap_mcspi_controller_init(const struct device *dev)
 	struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
 	uint32_t reg_val;
 
-	SPI_OMAP_REG->MCSPI_WAKEUPENABLE |= 1;
+	SPI_OMAP_REG->MCSPI_WAKEUPENABLE |= 0;
 	/*Choose between host and target*/
 	reg_val = SPI_OMAP_REG->MCSPI_MODULCTRL;
 	reg_val &= ~OMAP_MCSPI_MODULCTRL_STEST;
@@ -166,42 +190,192 @@ static int omap_mcspi_controller_init(const struct device *dev)
 	return 0;
 }
 
-static unsigned omap_mcspi_transceive(const struct device *dev, const struct spi_config *config,
+static void omap_mcspi_set_cs_enable(const struct device *dev, int ChannelNum, bool enable)
+{
+	struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
+	struct spi_omap_data *data = DEV_DATA(dev);
+
+	volatile uint32_t *ctrl_reg = &SPI_OMAP_REG->MCSPI_CH0CTRL + (ChannelNum << 2);
+
+	if (enable) {
+        *ctrl_reg |= OMAP_MCSPI_CHXCTRL_EN;  // Enable the channel
+	} else {
+        *ctrl_reg &= ~OMAP_MCSPI_CHXCTRL_EN; // Disable the channel
+	}
+	SPI_OMAP_REG->MCSPI_CH0CTRL = *ctrl_reg;
+	data->cs_data.chctrl = SPI_OMAP_REG->MCSPI_CH0CTRL;
+}
+
+static uint32_t omap_mcspi_chcfg_read(const struct device *dev, int ChannelNum)
+{
+	struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
+	struct spi_omap_data *data = DEV_DATA(dev);
+
+	volatile uint32_t *conf_reg = &SPI_OMAP_REG->MCSPI_CH0CONF + (ChannelNum << 2);
+	data->cs_data.chconf = *conf_reg;
+	return data->cs_data.chconf;
+}
+
+static void omap_mcspi_chcfg_write(const struct device *dev, int ChannelNum, uint32_t val)
+{
+	struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
+	struct spi_omap_data *data = DEV_DATA(dev);
+
+	volatile uint32_t *conf_reg = &SPI_OMAP_REG->MCSPI_CH0CONF + (ChannelNum << 2);
+	*conf_reg = val;
+	data->cs_data.chconf = *conf_reg;
+}
+	
+
+static int poll_reg(volatile uint32_t *reg, unsigned long bit )
+{
+	uint32_t timeout_ms = 1000;
+    uint64_t timeout = k_uptime_get() + timeout_ms;
+
+    while (!(*reg & bit)) {
+        if (k_uptime_get() > timeout) {
+            if (!(*reg & bit)) {
+                return -ETIMEDOUT;
+            } else {
+                return 0;
+            }
+        }
+        k_busy_wait(1); // Small delay to prevent tight busy-wait loops
+    }
+    return 0;
+}
+
+static int omap_mcspi_txrx_pio(const struct device *dev, const struct spi_config *config,
+                               const struct spi_buf_set *tx_bufs,
+                               const struct spi_buf_set *rx_bufs)
+{
+    const struct spi_omap_config *cfg = DEV_CFG(dev);
+    struct spi_omap_data *data = DEV_DATA(dev);
+    struct spi_context *ctx = &data->ctx;
+    struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
+    int count = tx_bufs->count;
+    int word_len = SPI_WORD_SIZE_GET(config->operation);
+    int ChannelNum = config->slave;
+
+    // Calculate pointers for the selected channel
+	volatile uint32_t *conf_reg = &SPI_OMAP_REG->MCSPI_CH0CONF + (ChannelNum << 2);
+	volatile uint32_t *stat_reg = &SPI_OMAP_REG->MCSPI_CH0STAT + (ChannelNum << 2);
+	volatile uint32_t *ctrl_reg = &SPI_OMAP_REG->MCSPI_CH0CTRL + (ChannelNum << 2);
+	volatile uint32_t *tx_reg = &SPI_OMAP_REG->MCSPI_TX0 + (ChannelNum << 2);
+	volatile uint32_t *rx_reg = &SPI_OMAP_REG->MCSPI_RX0 + (ChannelNum << 2);
+
+    do {
+        count -= word_len / 8;
+        if (tx_bufs) {
+            // Wait for TXS (Transmit buffer ready)
+            if (poll_reg(stat_reg, OMAP_MCSPI_CHSTAT_TXS) < 0) {
+                LOG_ERR("TXS timeout\n");
+                goto out;
+            }
+            // Write data to TX register
+            *tx_reg = *(uint32_t *)tx_bufs->buffers->buf++;
+        }
+        if (rx_bufs) {
+            // Wait for RXS (Receive buffer ready)
+            if (poll_reg(stat_reg, OMAP_MCSPI_CHSTAT_RXS) < 0) {
+                LOG_ERR("RXS timeout\n");
+                goto out;
+            }
+            if (count == (word_len / 8) && tx_bufs == NULL && (*conf_reg & OMAP_MCSPI_CHXCONF_TURBO)) {
+                omap_mcspi_set_cs_enable(dev, config->slave, false);
+                *(uint32_t *)rx_bufs->buffers->buf++ = *rx_reg;
+
+                // Wait for EOT (End of Transfer) if in Turbo mode
+                if (poll_reg(stat_reg, OMAP_MCSPI_CHSTAT_EOT) < 0) {
+                    LOG_ERR("EOT timeout\n");
+                    goto out;
+                }
+                count = 0;
+            } else if (count == 0 && tx_bufs == NULL) {
+                omap_mcspi_set_cs_enable(dev, config->slave, false);
+            }
+            *(uint32_t *)rx_bufs->buffers->buf++ = *rx_reg;
+        }
+        k_busy_wait(ctx->config->cs.delay);
+    } while (count >= (word_len / 8));
+
+    if (rx_bufs == NULL) {
+        // Final checks if only TX was performed
+        if (poll_reg(stat_reg, OMAP_MCSPI_CHSTAT_TXS) < 0) {
+            LOG_ERR("TXS timeout\n");
+        } else if (poll_reg(stat_reg, OMAP_MCSPI_CHSTAT_EOT) < 0) {
+            LOG_ERR("EOT timeout\n");
+        }
+        omap_mcspi_set_cs_enable(dev, config->slave, false);
+    }
+
+out:
+    omap_mcspi_set_cs_enable(dev, config->slave, true);
+    return tx_bufs->count - count;
+}
+
+static int omap_mcspi_transceive(const struct device *dev, const struct spi_config *config,
 				      const struct spi_buf_set *tx_bufs,
 				      const struct spi_buf_set *rx_bufs)
 {
-	const struct spi_omap_config *omap_cfg = DEV_CFG(dev);
-	struct spi_omap_data *omap_data = DEV_DATA(dev);
-	struct spi_context *ctx = &omap_data->ctx;
+	const struct spi_omap_config *cfg = DEV_CFG(dev);
+	struct spi_omap_data *data = DEV_DATA(dev);
+	struct spi_context *ctx = &data->ctx;
 	struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
 	uint32_t tx_data, rx_data;
     int err;
 
-	err = spi_omap_configure(dev, config);
+	spi_context_lock(ctx, false, NULL, NULL, config);
+	err = omap_spi_configure(dev, config);
 	if (err) {
 		goto out;
+	}	
+	omap_mcspi_set_cs_enable(dev, config->slave, false);
+	cfg->cs_configs[config->slave].frequency = config->frequency;
+	cfg->cs_configs[config->slave].mode = SPI_MODE_GET(config->operation);
+	cfg->cs_configs[config->slave].word_size = SPI_WORD_SIZE_GET(config->operation);
+	data->cs_data.chconf = omap_mcspi_chcfg_read(dev, config->slave);
+	data->cs_data.chconf &= ~OMAP_MCSPI_CHXCONF_TRM_MASK;
+	data->cs_data.chconf &= ~OMAP_MCSPI_CHXCONF_TURBO;
+
+	if (tx_bufs && (rx_bufs->count == 0) ) {
+		data->cs_data.chconf |= OMAP_MCSPI_CHXCONF_TRM_TX_ONLY;
+	} else if (rx_bufs && (tx_bufs->count == 0)) {
+		data->cs_data.chconf |= OMAP_MCSPI_CHXCONF_TRM_RX_ONLY;
 	}
+	omap_mcspi_chcfg_write(dev, config->slave, data->cs_data.chconf);
 
-	spi_context_buffers_setup(ctx, tx_bufs, rx_bufs, 1);
-	if (spi_context_cs_control(ctx, true)) {
-        goto out;
-    }
-
-	do {
-		if (spi_context_tx_on(ctx)) {
-			tx_data = *ctx->tx_buf;
+	if (SPI_WORD_SIZE_GET(config->operation)) {
+		unsigned count;
+		omap_mcspi_set_cs_enable(dev, config->slave, true);
+		/* RX_ONLY mode needs dummy data in TX reg*/
+		if (tx_bufs == NULL) {
+			SPI_OMAP_REG->MCSPI_TX0 = 0x00;
 		} else {
-			tx_data = 0U;
+			count = omap_mcspi_txrx_pio(dev, config, tx_bufs, rx_bufs);
+		}
+		if (count == 0) {
+			err = -EIO;
+			goto out;
 		}
 	}
+	
 out:
     spi_context_release(ctx, err);
+	omap_mcspi_set_cs_enable(dev, config->slave, false);
     return err;
 }
 
+static int omap_mcspi_release(const struct device *dev, const struct spi_config *config)
+{
+	struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
+	omap_mcspi_set_cs_enable(dev, config->slave, false);
+	spi_context_unlock_unconditionally(&data->ctx);
+	return 0;
+}
 static const struct spi_driver_api spi_omap_driver_api = {
-	.transceive = spi_omap_transceive,
-	.release = spi_omap_release,
+	.transceive = omap_mcspi_transceive,
+	.release = omap_mcspi_release,
 };
 
 #define SPI_OMAP_DEVICE_INIT(n)                                                                    \
@@ -215,8 +389,10 @@ static const struct spi_driver_api spi_omap_driver_api = {
 					.frequency = DT_INST_PROP(n, spi_max_frequency),           \
 					.operation = SPI_OP_MODE_MASTER | SPI_WORD_SET(8) |        \
 						     SPI_TRANSFER_MSB,                             \
+					.slave = DT_INST,                                               \
 				},                                                                 \
-	},                                                                                         \
+			.irq = DT_INST_IRQN(n),                                                    \
+		},                                                                                         \
                                                                                                    \
 					    static struct spi_omap_data spi_omap_data_##n;         \
                                                                                                    \

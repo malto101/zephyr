@@ -66,4 +66,42 @@
 		/* 0x14 is address of padconfig register of p8.22 and 14 is mux mode */
 		pinmux = <K3_PINMUX(0x14, PIN_INPUT, MUX_MODE_14)>;
 	};
+
+	/* Enable SPI6 */
+	spi6_do_default: spi6_do_default {
+		/* 0xa0 is the address of padconfig register of P9.21 and 4 is mux mode */
+		pinmux = <K3_PINMUX(0xa0, PIN_OUTPUT, MUX_MODE_4)>;
+	};
+
+	spi6_di_default: spi6_di_default {
+		/* 0xa4 is the address of padconfig register of P9.18 and 4 is mux mode */
+		pinmux = <K3_PINMUX(0xa4, PIN_INPUT, MUX_MODE_4)>;
+	};
+
+	spi6_clk_default: spi6_clk_default {
+		/* 0x9c is the address of padconfig register of P9.22 and 4 is mux mode */
+		pinmux = <K3_PINMUX(0x9c, PIN_OUTPUT, MUX_MODE_4)>;
+	};
+
+	spi6_cs0_default: spi6_cs0_default {
+		/* 0x74 is the address of padconfig register of P9.17 and 4 is mux mode */
+		pinmux = <K3_PINMUX(0x74, PIN_OUTPUT, MUX_MODE_4)>;
+	};
+
+	spi6_cs1_default: spi6_cs1_default {
+		/* 0x28 is the address of padconfig register of P9.23 and 4 is mux mode */
+		pinmux = <K3_PINMUX(0x28, PIN_OUTPUT, MUX_MODE_4)>;
+	};
+
+	spi6_cs2_default: spi6_cs2_default {
+		/* 0x2c is the address of padconfig register of P9.37 and 4 is mux mode */
+		pinmux = <K3_PINMUX(0x2c, PIN_OUTPUT, MUX_MODE_4)>;
+	};
+
+	spi6_cs3_default: spi6_cs3_default {
+		/* 0x7c is the address of padconfig register of P9.21 and 4 is mux mode */
+		pinmux = <K3_PINMUX(0x7c, PIN_OUTPUT, MUX_MODE_4)>;
+	};
+
+
 };

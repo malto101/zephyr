@@ -75,6 +75,15 @@
 		status = "disabled";
 	};
 
+	spi6: spi@2160000 {
+		compatible = "ti,omap-spi";
+		reg = <0x02160000 0x100>;
+		interrupts = <0 156 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		status = "disabled";
+		
+	};
+
 	mbox: mailbox0@29000000 {
 		compatible = "ti,omap-mailbox";
 		reg = <0x29000000 0x200>;
