@@ -6,7 +6,7 @@ description: |
   configuration of SPI word length, frequency, and mode.
 
 compatible: ti,omap-spi
-
+bus: spi
 include: spi-controller.yaml
 
 properties:
@@ -30,6 +30,8 @@ properties:
   pinctrl-names:
     description: Names for the pin control groups.
     required: true
+  
+  
 
     # spi@48030000 {
     #   compatible = "ti,omap-spi";

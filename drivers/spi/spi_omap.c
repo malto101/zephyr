@@ -101,10 +101,16 @@ typedef struct {
 #define OMAP_MCSPI_CHSTAT_EOT		BIT(2)	/* End of transfer*/
 #define OMAP_MCSPI_CHSTAT_TXFFE		BIT(3)	/* TX FIFO empty*/
 
+struct spi_cs_omap_config {
+	uint8_t chip_select;
+	uint32_t frequency;
+	uint32_t cs_delay;
+};
+
 struct spi_omap_config {
 	DEVICE_MMIO_NAMED_ROM(base);
 	uint32_t irq;
-	
+	struct spi_cs_omap_config cs_config[4];
 };
 
 struct spi_cs_omap_data (
@@ -384,13 +390,6 @@ static const struct spi_driver_api spi_omap_driver_api = {
 	static const struct spi_omap_config spi_omap_config_##n =                                  \
 		{                                                                                  \
 			DEVICE_MMIO_NAMED_INIT(base, DT_DRV_INST(n)),                              \
-			.spi_cfg =                                                                 \
-				{                                                                  \
-					.frequency = DT_INST_PROP(n, spi_max_frequency),           \
-					.operation = SPI_OP_MODE_MASTER | SPI_WORD_SET(8) |        \
-						     SPI_TRANSFER_MSB,                             \
-					.slave = DT_INST,                                               \
-				},                                                                 \
 			.irq = DT_INST_IRQN(n),                                                    \
 		},                                                                                         \
                                                                                                    \
