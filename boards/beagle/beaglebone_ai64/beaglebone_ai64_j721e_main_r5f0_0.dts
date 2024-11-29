@@ -52,6 +52,14 @@
 	current-speed = <115200>;
 };
 
+&spi6 {
+	status = "okay";
+	pinctrl-0 = <&spi6_do_default &spi6_di_default &spi6_clk_default
+		     &spi6_cs0_default &spi6_cs1_default &spi6_cs2_default
+		     &spi6_cs3_default>;
+	pinctrl-names = "default";
+};
+
 &systick_timer {
 	status = "okay";
 };

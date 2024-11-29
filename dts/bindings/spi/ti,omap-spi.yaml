@@ -18,10 +18,12 @@ properties:
     type: array
     description: SPI interrupt line.
 
-  spi-max-frequency:
-    type: int
-    description: Maximum SPI clock frequency supported by the controller.
+  spi-frequency:
+    type: array
+    description: SPI clock frequency supported by the controller.
     required: true
+    items:
+      - type: integer
 
   pinctrl-0:
     description: Pin control groups for this SPI instance.
@@ -31,7 +33,12 @@ properties:
     description: Names for the pin control groups.
     required: true
   
-  
+  spi_cs_delay:
+    description: Delay between CS assertion and first clock edge.
+    required: true
+    type: array
+    items:
+      - type: integer
 
     # spi@48030000 {
     #   compatible = "ti,omap-spi";

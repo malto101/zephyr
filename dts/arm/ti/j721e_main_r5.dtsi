@@ -81,7 +81,8 @@
 		interrupts = <0 156 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 		interrupt-parent = <&vim>;
 		status = "disabled";
-		
+		spi-frequency = <1000000 1000000 1000000 1000000>;  // Frequencies for each chip select
+		spi_cs_delay = <0 0 0 0>;
 	};
 
 	mbox: mailbox0@29000000 {

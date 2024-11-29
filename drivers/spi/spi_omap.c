@@ -384,19 +384,31 @@ static const struct spi_driver_api spi_omap_driver_api = {
 	.release = omap_mcspi_release,
 };
 
-#define SPI_OMAP_DEVICE_INIT(n)                                                                    \
-	static void spi_omap_config_func_##n(const struct device *dev);                            \
-                                                                                                   \
-	static const struct spi_omap_config spi_omap_config_##n =                                  \
-		{                                                                                  \
-			DEVICE_MMIO_NAMED_INIT(base, DT_DRV_INST(n)),                              \
-			.irq = DT_INST_IRQN(n),                                                    \
-		},                                                                                         \
-                                                                                                   \
-					    static struct spi_omap_data spi_omap_data_##n;         \
-                                                                                                   \
-	DEVICE_DT_DEFINE(DT_DRV_INST(n), spi_omap_config_func_##n, NULL, &spi_omap_data_##n,       \
-			 &spi_omap_config_##n, POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,              \
-			 &spi_omap_driver_api);                                                    \
-                                                                                                   \
-	DT_INST_FOREACH_STATUS_OKAY(SPI_OMAP_DEVICE_INIT)
+#define SPI_OMAP_DEVICE_INIT(n)                                                      \
+    static void spi_omap_config_func_##n(const struct device *dev);                  \
+                                                                                     \
+    static const struct spi_omap_config spi_omap_config_##n =                        \
+    {                                                                                \
+        DEVICE_MMIO_NAMED_INIT(base, DT_DRV_INST(n)),                                \
+        .irq = DT_INST_IRQN(n),                                                      \
+        .cs_config = {                                                               \
+            { .chip_select = 0,                                                      \
+              .frequency = DT_INST_PROP_OR(n, spi-frequency, 1000000)[0],       \
+              .cs_delay = DT_INST_PROP_OR(n, spi_cs_delay, 0)[0] },                 \
+            { .chip_select = 1,                                                      \
+              .frequency = DT_INST_PROP_OR(n, spi-frequency, 1000000)[1],       \
+              .cs_delay = DT_INST_PROP_OR(n, spi_cs_delay, 0)[1] },                 \
+            { .chip_select = 2,                                                      \
+              .frequency = DT_INST_PROP_OR(n, spi-frequency, 1000000)[2],       \
+              .cs_delay = DT_INST_PROP_OR(n, spi_cs_delay, 0)[2] },                 \
+            { .chip_select = 3,                                                      \
+              .frequency = DT_INST_PROP_OR(n, spi-frequency, 1000000)[3],       \
+              .cs_delay = DT_INST_PROP_OR(n, spi_cs_delay, 0)[3] },                 \
+        },                                                                           \
+    };                                                                               \
+                                                                                     \
+    static struct spi_omap_data spi_omap_data_##n;                                    \
+                                                                                     \
+    DEVICE_DT_DEFINE(DT_DRV_INST(n), spi_omap_config_func_##n, NULL, &spi_omap_data_##n,\
+                     &spi_omap_config_##n, POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,    \
+                     &spi_omap_driver_api);
