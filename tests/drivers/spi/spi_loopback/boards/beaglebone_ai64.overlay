@@ -1,0 +1,13 @@
+&spi6 {
+    slow@0 {
+        compatible = "test-spi-loopback-slow";
+        reg = <0>; /* Chip select 0 */
+        spi-max-frequency = <500000>; /* 500 kHz */
+    };
+
+    fast@0 {
+        compatible = "test-spi-loopback-fast";
+        reg = <0>; /* Chip select 1 */
+        spi-max-frequency = <16000000>; /* 16 MHz */
+    };
+};

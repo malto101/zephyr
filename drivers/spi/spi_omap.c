@@ -11,10 +11,6 @@
 
 LOG_MODULE_REGISTER(spi_omap, CONFIG_SPI_LOG_LEVEL);
 
-#define DEV_CFG(dev)          ((const struct spi_omap_config *)((dev)->config))
-#define DEV_DATA(dev)         ((struct spi_omap_data *)(dev)->data)
-#define DEV_SPI_CFG_BASE(dev) ((struct spi_omap_reg_t *)DEVICE_MMIO_NAMED_GET(dev, port_base))
-
 /* SPI trnasfer status */
 #define MCSPI_TRANSFER_COMPLETED        (0U)
 #define MCSPI_TRANSFER_STARTED          (1U)
@@ -30,7 +26,7 @@ typedef struct {
 	__IO uint32_t MCSPI_HL_HWINFO;    /* 0x04 */
 	uint8_t RESERVED_0[0x2];          /* 0x08 - 0x09 */
 	__IO uint32_t MCSPI_HL_SYSCONFIG; /* 0x10 */
-	uuint8_t RESERVED_1[0xEC];        /* 0x14 - 0x99 */
+	uint8_t RESERVED_1[0xEC];        /* 0x14 - 0x99 */
 	__IO uint32_t MCSPI_REVISION;     /* 0x100 */
 	uint8_t RESERVED_2[0x6];          /* 0x104 - 0x109 */
 	__IO uint32_t MCSPI_SYSCONFIG;    /* 0x110 */
@@ -65,6 +61,10 @@ typedef struct {
 	uint8_t RESERVED_3[0x1C];         /* 0x184 - 0x19F */
 	__IO uint32_t MCSPI_DAFRX;        /* 0x1A0 */
 } spi_omap_reg_t;
+
+#define DEV_CFG(dev)          ((const struct spi_omap_config *)((dev)->config))
+#define DEV_DATA(dev)         ((struct spi_omap_data *)(dev)->data)
+#define DEV_SPI_CFG_BASE(dev) ((struct spi_omap_reg_t *)DEVICE_MMIO_NAMED_GET(dev, base))
 
 /* MCSPI_CH(0/1/2/3)CONF register bits */
 #define OMAP_MCSPI_CHXCONF_PHA                                                                     \
@@ -101,21 +101,15 @@ typedef struct {
 #define OMAP_MCSPI_CHSTAT_EOT		BIT(2)	/* End of transfer*/
 #define OMAP_MCSPI_CHSTAT_TXFFE		BIT(3)	/* TX FIFO empty*/
 
-struct spi_cs_omap_config {
-	uint8_t chip_select;
-	uint32_t frequency;
-	uint32_t cs_delay;
-};
-
 struct spi_omap_config {
 	DEVICE_MMIO_NAMED_ROM(base);
 	uint32_t irq;
-	struct spi_cs_omap_config cs_config[4];
 };
 
-struct spi_cs_omap_data (
-	uint32_t chconf, chctrl;
-);
+struct spi_cs_omap_data {
+	uint32_t chconf;
+	uint32_t chctrl;
+};
 
 struct spi_omap_data {
 	DEVICE_MMIO_NAMED_RAM(base);
@@ -153,11 +147,11 @@ omap_spi_configure(const struct device *dev, const struct spi_config *config)
 	}
 
 	if (config->operation & SPI_MODE_CPOL) {
-		SPI_OMAP_REG->MCSPI_CH0CONF |= OMAP_MCSPI_CHXCONF_POL
+		SPI_OMAP_REG->MCSPI_CH0CONF |= OMAP_MCSPI_CHXCONF_POL;
 	}
 
 	if (config->operation & SPI_MODE_CPHA) {
-		SPI_OMAP_REG->MCSPI_CH0CONF |= OMAP_MCSPI_CHXCONF_PHA
+		SPI_OMAP_REG->MCSPI_CH0CONF |= OMAP_MCSPI_CHXCONF_PHA;
 	}
 
 	ctx->config = config;
@@ -178,7 +172,7 @@ static int omap_mcspi_controller_init(const struct device *dev)
 	reg_val = SPI_OMAP_REG->MCSPI_MODULCTRL;
 	reg_val &= ~OMAP_MCSPI_MODULCTRL_STEST;
 
-	if (SPI_OP_MODE_GET(config->operation) != SPI_OP_MODE_MASTER) {
+	if (SPI_OP_MODE_GET(ctx->config->operation) != SPI_OP_MODE_MASTER) {
 		LOG_ERR("Slave mode is not supported");
 		return -ENOTSUP;
 	} else {
@@ -255,7 +249,6 @@ static int omap_mcspi_txrx_pio(const struct device *dev, const struct spi_config
                                const struct spi_buf_set *tx_bufs,
                                const struct spi_buf_set *rx_bufs)
 {
-    const struct spi_omap_config *cfg = DEV_CFG(dev);
     struct spi_omap_data *data = DEV_DATA(dev);
     struct spi_context *ctx = &data->ctx;
     struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
@@ -324,11 +317,10 @@ static int omap_mcspi_transceive(const struct device *dev, const struct spi_conf
 				      const struct spi_buf_set *tx_bufs,
 				      const struct spi_buf_set *rx_bufs)
 {
-	const struct spi_omap_config *cfg = DEV_CFG(dev);
 	struct spi_omap_data *data = DEV_DATA(dev);
 	struct spi_context *ctx = &data->ctx;
 	struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
-	uint32_t tx_data, rx_data;
+	uint32_t tx_data, rx_data, frequency, mode, word_size;
     int err;
 
 	spi_context_lock(ctx, false, NULL, NULL, config);
@@ -337,9 +329,9 @@ static int omap_mcspi_transceive(const struct device *dev, const struct spi_conf
 		goto out;
 	}	
 	omap_mcspi_set_cs_enable(dev, config->slave, false);
-	cfg->cs_configs[config->slave].frequency = config->frequency;
-	cfg->cs_configs[config->slave].mode = SPI_MODE_GET(config->operation);
-	cfg->cs_configs[config->slave].word_size = SPI_WORD_SIZE_GET(config->operation);
+	frequency = config->frequency;
+	mode = SPI_MODE_GET(config->operation);
+	word_size = SPI_WORD_SIZE_GET(config->operation);
 	data->cs_data.chconf = omap_mcspi_chcfg_read(dev, config->slave);
 	data->cs_data.chconf &= ~OMAP_MCSPI_CHXCONF_TRM_MASK;
 	data->cs_data.chconf &= ~OMAP_MCSPI_CHXCONF_TURBO;
@@ -374,7 +366,7 @@ out:
 
 static int omap_mcspi_release(const struct device *dev, const struct spi_config *config)
 {
-	struct spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
+	struct spi_omap_data *data = DEV_DATA(dev);
 	omap_mcspi_set_cs_enable(dev, config->slave, false);
 	spi_context_unlock_unconditionally(&data->ctx);
 	return 0;
@@ -385,30 +377,17 @@ static const struct spi_driver_api spi_omap_driver_api = {
 };
 
 #define SPI_OMAP_DEVICE_INIT(n)                                                      \
-    static void spi_omap_config_func_##n(const struct device *dev);                  \
-                                                                                     \
+    LOG_INSTANCE_REGISTER(omap_i2c, inst, CONFIG_SPI_LOG_LEVEL);                     \
     static const struct spi_omap_config spi_omap_config_##n =                        \
     {                                                                                \
-        DEVICE_MMIO_NAMED_INIT(base, DT_DRV_INST(n)),                                \
+        DEVICE_MMIO_NAMED_ROM_INIT(base, DT_DRV_INST(n)),                                \
         .irq = DT_INST_IRQN(n),                                                      \
-        .cs_config = {                                                               \
-            { .chip_select = 0,                                                      \
-              .frequency = DT_INST_PROP_OR(n, spi-frequency, 1000000)[0],       \
-              .cs_delay = DT_INST_PROP_OR(n, spi_cs_delay, 0)[0] },                 \
-            { .chip_select = 1,                                                      \
-              .frequency = DT_INST_PROP_OR(n, spi-frequency, 1000000)[1],       \
-              .cs_delay = DT_INST_PROP_OR(n, spi_cs_delay, 0)[1] },                 \
-            { .chip_select = 2,                                                      \
-              .frequency = DT_INST_PROP_OR(n, spi-frequency, 1000000)[2],       \
-              .cs_delay = DT_INST_PROP_OR(n, spi_cs_delay, 0)[2] },                 \
-            { .chip_select = 3,                                                      \
-              .frequency = DT_INST_PROP_OR(n, spi-frequency, 1000000)[3],       \
-              .cs_delay = DT_INST_PROP_OR(n, spi_cs_delay, 0)[3] },                 \
-        },                                                                           \
     };                                                                               \
                                                                                      \
     static struct spi_omap_data spi_omap_data_##n;                                    \
                                                                                      \
-    DEVICE_DT_DEFINE(DT_DRV_INST(n), spi_omap_config_func_##n, NULL, &spi_omap_data_##n,\
+    DEVICE_DT_DEFINE(n, omap_mcspi_controller_init, NULL, &spi_omap_data_##n,		\
                      &spi_omap_config_##n, POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,    \
-                     &spi_omap_driver_api);
+                     &spi_omap_driver_api);											  \
+																					 
+DT_INST_FOREACH_STATUS_OKAY(SPI_OMAP_DEVICE_INIT)

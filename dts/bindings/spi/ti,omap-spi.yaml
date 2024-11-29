@@ -7,45 +7,10 @@ description: |
 
 compatible: ti,omap-spi
 bus: spi
-include: spi-controller.yaml
+include: [spi-controller.yaml, pinctrl-device.yaml, base.yaml]
 
 properties:
   reg:
     type: array
     description: Base address and size of the SPI register set.
 
-  interrupts:
-    type: array
-    description: SPI interrupt line.
-
-  spi-frequency:
-    type: array
-    description: SPI clock frequency supported by the controller.
-    required: true
-    items:
-      - type: integer
-
-  pinctrl-0:
-    description: Pin control groups for this SPI instance.
-    required: true
-
-  pinctrl-names:
-    description: Names for the pin control groups.
-    required: true
-  
-  spi_cs_delay:
-    description: Delay between CS assertion and first clock edge.
-    required: true
-    type: array
-    items:
-      - type: integer
-
-    # spi@48030000 {
-    #   compatible = "ti,omap-spi";
-    #   reg = <0x48030000 0x1000>;
-    #   interrupts = <27>;
-    #   spi-max-frequency = <48000000>;
-    #   clock-frequency = <19200000>;
-    #   cs-config = <0 8 1000000 0>,  /* CS0: 8-bit word, 1 MHz, Mode 0 */
-    #               <3 16 2000000 3>; /* CS3: 16-bit word, 2 MHz, Mode 3 */
-    # };

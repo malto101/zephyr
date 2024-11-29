@@ -4,6 +4,6 @@
 config SPI_OMAP
 	bool "OMAP SPI driver"
 	default y
-	depends on DT_HAS_TI_OMAP_I2C_ENABLED
+	depends on DT_HAS_TI_OMAP_SPI_ENABLED
 	help
 	  Enable the SPI driver for TI K3 driver.
