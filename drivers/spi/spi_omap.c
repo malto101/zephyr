@@ -380,18 +380,18 @@ static const struct spi_driver_api spi_omap_driver_api = {
 	.release = omap_mcspi_release,
 };
 
-#define SPI_OMAP_DEVICE_INIT(n)                                                      \
-	LOG_INSTANCE_REGISTER(spi_omap, n, CONFIG_SPI_LOG_LEVEL);                         \
-    static const struct spi_omap_config spi_omap_config_##n =                        \
+#define SPI_OMAP_DEVICE_INIT(inst)                                                      \
+	LOG_INSTANCE_REGISTER(spi_omap, inst, CONFIG_SPI_LOG_LEVEL);                         \
+    static const struct spi_omap_config spi_omap_config_##inst =                        \
     {                                                                                \
-        DEVICE_MMIO_NAMED_ROM_INIT(base, DT_DRV_INST(n)),                                \
-        .irq = DT_INST_IRQN(n),                                                      \
+        DEVICE_MMIO_NAMED_ROM_INIT(base, DT_DRV_INST(inst)),                                \
+        .irq = DT_INST_IRQN(inst),                                                      \
     };                                                                               \
                                                                                      \
-    static struct spi_omap_data spi_omap_data_##n;                                    \
+    static struct spi_omap_data spi_omap_data_##inst;                                    \
                                                                                      \
-    DEVICE_DT_DEFINE(DT_DRV_INST(n), omap_mcspi_controller_init, NULL, &spi_omap_data_##n,		\
-                     &spi_omap_config_##n, POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,    \
+    DEVICE_DT_DEFINE(inst, omap_mcspi_controller_init, NULL, &spi_omap_data_##inst,		\
+                     &spi_omap_config_##inst, POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,    \
                      &spi_omap_driver_api);											  \
 																					 
 DT_INST_FOREACH_STATUS_OKAY(SPI_OMAP_DEVICE_INIT)
