@@ -263,7 +263,7 @@ static int omap_mcspi_txrx_pio(const struct device *dev, const struct spi_config
     volatile uint32_t *stat_reg = &SPI_OMAP_REG->MCSPI_CH0STAT + (ChannelNum << 2);
     volatile uint32_t *tx_reg = &SPI_OMAP_REG->MCSPI_TX0 + (ChannelNum << 2);
     volatile uint32_t *rx_reg = &SPI_OMAP_REG->MCSPI_RX0 + (ChannelNum << 2);
-
+	LOG_DBG("TX/RX buffers: %p/%p", tx_bufs, rx_bufs);
     do {
         count -= word_len / 8;
         if (tx_ptr) {
@@ -321,13 +321,15 @@ static int omap_mcspi_transceive(const struct device *dev, const struct spi_conf
 				      const struct spi_buf_set *tx_bufs,
 				      const struct spi_buf_set *rx_bufs)
 {
+	LOG_DBG("function start");
 	struct spi_omap_data *data = DEV_DATA(dev);
 	struct spi_context *ctx = &data->ctx;
 	spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
 	uint32_t frequency, mode, word_size;
     int err;
 
-	spi_context_lock(ctx, false, NULL, NULL, config);
+	// spi_context_lock(ctx, false, NULL, NULL, config);
+	LOG_DBG("Context locked");
 	err = omap_spi_configure(dev, config);
 	if (err) {
 		goto out;
@@ -339,6 +341,7 @@ static int omap_mcspi_transceive(const struct device *dev, const struct spi_conf
 	data->cs_data.chconf = omap_mcspi_chcfg_read(dev, config->slave);
 	data->cs_data.chconf &= ~OMAP_MCSPI_CHXCONF_TRM_MASK;
 	data->cs_data.chconf &= ~OMAP_MCSPI_CHXCONF_TURBO;
+	LOG_DBG("mode %d, word_size %d", mode, word_size);
 
 	if (tx_bufs && (rx_bufs->count == 0) ) {
 		data->cs_data.chconf |= OMAP_MCSPI_CHXCONF_TRM_TX_ONLY;
@@ -350,12 +353,15 @@ static int omap_mcspi_transceive(const struct device *dev, const struct spi_conf
 	if (SPI_WORD_SIZE_GET(config->operation)) {
 		unsigned count = 0;
 		omap_mcspi_set_cs_enable(dev, config->slave, true);
+		LOG_DBG("TX/RX buffers: %p/%p", tx_bufs, rx_bufs);
 		/* RX_ONLY mode needs dummy data in TX reg*/
 		if (tx_bufs == NULL) {
 			SPI_OMAP_REG->MCSPI_TX0 = 0x00;
-		} else {
-			count = omap_mcspi_txrx_pio(dev, config, tx_bufs, rx_bufs);
-		}
+			LOG_DBG("TX buffer is NULL");
+		} 
+		 
+		count = omap_mcspi_txrx_pio(dev, config, tx_bufs, rx_bufs);
+		
 		if (count == 0) {
 			err = -EIO;
 			goto out;
@@ -363,7 +369,7 @@ static int omap_mcspi_transceive(const struct device *dev, const struct spi_conf
 	}
 	
 out:
-    spi_context_release(ctx, err);
+    // spi_context_release(ctx, err);
 	omap_mcspi_set_cs_enable(dev, config->slave, false);
     return err;
 }
@@ -381,17 +387,16 @@ static const struct spi_driver_api spi_omap_driver_api = {
 };
 
 #define SPI_OMAP_DEVICE_INIT(inst)                                                      \
-	LOG_INSTANCE_REGISTER(spi_omap, inst, CONFIG_SPI_LOG_LEVEL);                         \
+    LOG_INSTANCE_REGISTER(spi_omap, inst, CONFIG_SPI_LOG_LEVEL);                         \
     static const struct spi_omap_config spi_omap_config_##inst =                        \
     {                                                                                \
         DEVICE_MMIO_NAMED_ROM_INIT(base, DT_DRV_INST(inst)),                                \
         .irq = DT_INST_IRQN(inst),                                                      \
     };                                                                               \
                                                                                      \
-    static struct spi_omap_data spi_omap_data_##inst;                                    \
-                                                                                     \
-    DEVICE_DT_DEFINE(inst, omap_mcspi_controller_init, NULL, &spi_omap_data_##inst,		\
-                     &spi_omap_config_##inst, POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,    \
-                     &spi_omap_driver_api);											  \
-																					 
+    static struct spi_omap_data spi_omap_data_##inst;                                   \
+    DEVICE_DT_INST_DEFINE(inst, omap_mcspi_controller_init, NULL, &spi_omap_data_##inst,  \
+                     &spi_omap_config_##inst, POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,   \
+                     &spi_omap_driver_api);                                           \
+
 DT_INST_FOREACH_STATUS_OKAY(SPI_OMAP_DEVICE_INIT)
