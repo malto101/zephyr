@@ -190,15 +190,18 @@ static int omap_mcspi_controller_init(const struct device *dev)
 
 static void omap_mcspi_set_cs_enable(const struct device *dev, int ChannelNum, bool enable)
 {
+	LOG_INF("omap_mcspi_set_cs_enable start");
 	spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
 	struct spi_omap_data *data = DEV_DATA(dev);
 
-	volatile uint32_t *ctrl_reg = &SPI_OMAP_REG->MCSPI_CH0CTRL + (ChannelNum << 2);
+ 	volatile uint32_t *ctrl_reg = &SPI_OMAP_REG->MCSPI_CH0CTRL + (ChannelNum << 2);
 
 	if (enable) {
-        *ctrl_reg |= OMAP_MCSPI_CHXCTRL_EN;  // Enable the channel
+		*ctrl_reg |= OMAP_MCSPI_CHXCTRL_EN;  // Enable the channel
+		LOG_INF("Channel %d enabled and control reg: %x", ChannelNum, (unsigned int)ctrl_reg);
 	} else {
         *ctrl_reg &= ~OMAP_MCSPI_CHXCTRL_EN; // Disable the channel
+		LOG_INF("Channel %d disabled and control reg: %x", ChannelNum, (unsigned int)ctrl_reg);
 	}
 	SPI_OMAP_REG->MCSPI_CH0CTRL = *ctrl_reg;
 	data->cs_data.chctrl = SPI_OMAP_REG->MCSPI_CH0CTRL;
@@ -206,6 +209,7 @@ static void omap_mcspi_set_cs_enable(const struct device *dev, int ChannelNum, b
 
 static uint32_t omap_mcspi_chcfg_read(const struct device *dev, int ChannelNum)
 {
+	LOG_INF("omap_mcspi_chcfg_read start");
 	spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
 	struct spi_omap_data *data = DEV_DATA(dev);
 
@@ -220,6 +224,7 @@ static void omap_mcspi_chcfg_write(const struct device *dev, int ChannelNum, uin
 	struct spi_omap_data *data = DEV_DATA(dev);
 
 	volatile uint32_t *conf_reg = &SPI_OMAP_REG->MCSPI_CH0CONF + (ChannelNum << 2);
+	LOG_INF("Channel %d configuration register: %ls", ChannelNum, conf_reg);
 	*conf_reg = val;
 	data->cs_data.chconf = *conf_reg;
 }
@@ -247,6 +252,7 @@ static int omap_mcspi_txrx_pio(const struct device *dev, const struct spi_config
                                const struct spi_buf_set *tx_bufs,
                                const struct spi_buf_set *rx_bufs)
 {
+	LOG_INF("omap_mcspi_txrx_pio start");
     struct spi_omap_data *data = DEV_DATA(dev);
     struct spi_context *ctx = &data->ctx;
     spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
@@ -263,7 +269,7 @@ static int omap_mcspi_txrx_pio(const struct device *dev, const struct spi_config
     volatile uint32_t *stat_reg = &SPI_OMAP_REG->MCSPI_CH0STAT + (ChannelNum << 2);
     volatile uint32_t *tx_reg = &SPI_OMAP_REG->MCSPI_TX0 + (ChannelNum << 2);
     volatile uint32_t *rx_reg = &SPI_OMAP_REG->MCSPI_RX0 + (ChannelNum << 2);
-	LOG_DBG("TX/RX buffers: %p/%p", tx_bufs, rx_bufs);
+	LOG_INF("TX/RX buffers: %p/%p", tx_bufs, rx_bufs);
     do {
         count -= word_len / 8;
         if (tx_ptr) {
@@ -321,15 +327,16 @@ static int omap_mcspi_transceive(const struct device *dev, const struct spi_conf
 				      const struct spi_buf_set *tx_bufs,
 				      const struct spi_buf_set *rx_bufs)
 {
-	LOG_DBG("function start");
+	LOG_INF("function start");
 	struct spi_omap_data *data = DEV_DATA(dev);
 	struct spi_context *ctx = &data->ctx;
 	spi_omap_reg_t *SPI_OMAP_REG = DEV_SPI_CFG_BASE(dev);
 	uint32_t frequency, mode, word_size;
     int err;
+ 	// spi_context_lock(ctx, false, NULL, NULL, config);
+	LOG_INF("SPI_OMAP_REG address: %p", SPI_OMAP_REG);
 
-	// spi_context_lock(ctx, false, NULL, NULL, config);
-	LOG_DBG("Context locked");
+	LOG_INF("Context locked");
 	err = omap_spi_configure(dev, config);
 	if (err) {
 		goto out;
@@ -341,23 +348,26 @@ static int omap_mcspi_transceive(const struct device *dev, const struct spi_conf
 	data->cs_data.chconf = omap_mcspi_chcfg_read(dev, config->slave);
 	data->cs_data.chconf &= ~OMAP_MCSPI_CHXCONF_TRM_MASK;
 	data->cs_data.chconf &= ~OMAP_MCSPI_CHXCONF_TURBO;
-	LOG_DBG("mode %d, word_size %d", mode, word_size);
+	LOG_INF("mode %d, word_size %d", mode, word_size);
 
 	if (tx_bufs && (rx_bufs->count == 0) ) {
+		LOG_INF("TX buffer is not NULL");
 		data->cs_data.chconf |= OMAP_MCSPI_CHXCONF_TRM_TX_ONLY;
 	} else if (rx_bufs && (tx_bufs->count == 0)) {
+		LOG_INF("RX buffer is not NULL");
 		data->cs_data.chconf |= OMAP_MCSPI_CHXCONF_TRM_RX_ONLY;
 	}
 	omap_mcspi_chcfg_write(dev, config->slave, data->cs_data.chconf);
 
 	if (SPI_WORD_SIZE_GET(config->operation)) {
+		LOG_INF("Word size is not 0");
 		unsigned count = 0;
 		omap_mcspi_set_cs_enable(dev, config->slave, true);
-		LOG_DBG("TX/RX buffers: %p/%p", tx_bufs, rx_bufs);
+		LOG_INF("TX/RX buffers: %p/%p", tx_bufs, rx_bufs);
 		/* RX_ONLY mode needs dummy data in TX reg*/
 		if (tx_bufs == NULL) {
 			SPI_OMAP_REG->MCSPI_TX0 = 0x00;
-			LOG_DBG("TX buffer is NULL");
+			LOG_INF("TX buffer is NULL");
 		} 
 		 
 		count = omap_mcspi_txrx_pio(dev, config, tx_bufs, rx_bufs);
