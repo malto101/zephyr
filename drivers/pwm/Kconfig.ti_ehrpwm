@@ -1,0 +1,12 @@
+# TI EHRPWM PWM configuration options
+
+# Copyright (C) 2024 Dhruv Menon <dhruvmenon1104@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+config PWM_TIEHRPWM
+	bool "TI TIEHRPWM PWM Driver"
+	default y
+	depends on DT_HAS_TI_TIEHRPWM_ENABLED
+	select PINCTRL
+	help
+	  Enable TI TIEHRPWM PWM Driver.
