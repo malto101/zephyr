@@ -59,6 +59,13 @@
 	current-speed = <115200>;
 };
 
+&pwm4_B {
+	status = "okay";
+	pinctrl-0 = <&pwm4_B_default>;
+	pinctrl-names = "default";
+	
+};
+
 &systick_timer {
 	status = "okay";
 };

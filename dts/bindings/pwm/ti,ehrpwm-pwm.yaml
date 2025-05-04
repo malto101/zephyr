@@ -4,7 +4,7 @@
 
 compatible: "ti,ehrpwm-pwm"
 
-include: [base.yaml]
+include: [base.yaml, pwm-controller.yaml, pinctrl-device.yaml]
 
 properties:
   reg:

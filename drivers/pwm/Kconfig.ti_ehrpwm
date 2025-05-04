@@ -6,7 +6,7 @@
 config PWM_TIEHRPWM
 	bool "TI TIEHRPWM PWM Driver"
 	default y
-	depends on DT_HAS_TI_TIEHRPWM_ENABLED
+	depends on DT_HAS_TI_EHRPWM_PWM_ENABLED
 	select PINCTRL
 	help
 	  Enable TI TIEHRPWM PWM Driver.

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT ti_ehrpwm
+#define DT_DRV_COMPAT ti_ehrpwm_pwm
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/pwm.h>
