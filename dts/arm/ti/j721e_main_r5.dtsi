@@ -132,7 +132,7 @@
 		status = "disabled";
 	};
 
-	pwm4_B: pwm@3040000 {
+	pwm4: pwm@3040000 {
 		compatible = "ti,ehrpwm-pwm";
 		reg = <0x03040000 0x1000>;
 		interrupts = <0 108 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;

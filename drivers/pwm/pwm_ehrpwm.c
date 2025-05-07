@@ -7,12 +7,13 @@
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/pwm.h>
-#include <zephyr/drivers/clock_control.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(pwm_ehrpwm, CONFIG_PWM_LOG_LEVEL);
+
+#define DEFAULT_CLK_RATE 100000000U /* 100 MHz,
 
 /* EHRPWM register offsets */
 #define TBCTL           0x00
@@ -32,6 +33,7 @@ LOG_MODULE_REGISTER(pwm_ehrpwm, CONFIG_PWM_LOG_LEVEL);
 #define TBCTL_CTRMODE_UP    0
 #define TBCTL_HSPCLKDIV_SHIFT 7
 #define TBCTL_CLKDIV_SHIFT  10
+#define TBCTL_PRDLD_MASK    BIT(3)
 
 /* AQCTL bits */
 #define AQCTL_CBU_FRCLOW    BIT(8)
@@ -50,8 +52,6 @@ LOG_MODULE_REGISTER(pwm_ehrpwm, CONFIG_PWM_LOG_LEVEL);
 
 struct pwm_ehrpwm_config {
     mm_reg_t base;
-    const struct device *clock_dev;
-    clock_control_subsys_t clock_subsys;
 };
 
 struct pwm_ehrpwm_data {
@@ -182,20 +182,10 @@ static int pwm_ehrpwm_init(const struct device *dev)
     struct pwm_ehrpwm_data *data = dev->data;
     int ret;
 
-    /* Get clock rate */
-    ret = clock_control_get_rate(config->clock_dev, config->clock_subsys, 
-                                &data->clk_rate);
-    if (ret < 0) {
-        LOG_ERR("Failed to get clock rate: %d", ret);
-        return ret;
-    }
+    /* ideally Get clock rate, but as clock subsystem isnt ready yet,
+     we will use a default value */
+    data->clk_rate = DEFAULT_CLK_RATE;
 
-    /* Enable clock */
-    ret = clock_control_on(config->clock_dev, config->clock_subsys);
-    if (ret < 0) {
-        LOG_ERR("Failed to enable clock: %d", ret);
-        return ret;
-    }
 
     return 0;
 }
@@ -209,8 +199,6 @@ static DEVICE_API(pwm,pwm_ehrpwm_driver_api) = {
     static struct pwm_ehrpwm_data pwm_ehrpwm_data_##n; \
     static const struct pwm_ehrpwm_config pwm_ehrpwm_config_##n = { \
         .base = DT_INST_REG_ADDR(n), \
-        .clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)), \
-        .clock_subsys = (clock_control_subsys_t)DT_INST_CLOCKS_CELL(n, bits), \
     }; \
     DEVICE_DT_INST_DEFINE(n, \
             pwm_ehrpwm_init, \
