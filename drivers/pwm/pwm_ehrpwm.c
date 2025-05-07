@@ -13,7 +13,7 @@
 
 LOG_MODULE_REGISTER(pwm_ehrpwm, CONFIG_PWM_LOG_LEVEL);
 
-#define DEFAULT_CLK_RATE 100000000U /* 100 MHz,
+#define DEFAULT_CLK_RATE 100000000U /* 100 MHz,*/
 
 /* EHRPWM register offsets */
 #define TBCTL           0x00
@@ -178,9 +178,7 @@ static int pwm_ehrpwm_get_cycles_per_sec(const struct device *dev,
 
 static int pwm_ehrpwm_init(const struct device *dev)
 {
-    const struct pwm_ehrpwm_config *config = dev->config;
     struct pwm_ehrpwm_data *data = dev->data;
-    int ret;
 
     /* ideally Get clock rate, but as clock subsystem isnt ready yet,
      we will use a default value */
