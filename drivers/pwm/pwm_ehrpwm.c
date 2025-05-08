@@ -10,6 +10,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/drivers/pinctrl.h>
 
 LOG_MODULE_REGISTER(pwm_ehrpwm, CONFIG_PWM_LOG_LEVEL);
 
@@ -50,11 +51,17 @@ LOG_MODULE_REGISTER(pwm_ehrpwm, CONFIG_PWM_LOG_LEVEL);
 #define CLKDIV_MAX          7
 #define HSPCLKDIV_MAX       7
 
+#define DEV_CFG(dev) ((const struct pwm_ehrpwm_config *)(dev)->config)
+#define DEV_DATA(dev) ((struct pwm_ehrpwm_data *)(dev)->data)
+
 struct pwm_ehrpwm_config {
-    mm_reg_t base;
+    DEVICE_MMIO_NAMED_ROM(base);
+	const struct pinctrl_dev_config *pcfg;
+
 };
 
 struct pwm_ehrpwm_data {
+    DEVICE_MMIO_NAMED_RAM(base);
     uint32_t period_cycles[NUM_CHANNELS];
     pwm_flags_t polarity[NUM_CHANNELS];
     uint32_t clk_rate;
@@ -62,14 +69,14 @@ struct pwm_ehrpwm_data {
 
 static inline uint16_t ehrpwm_read(const struct device *dev, uint32_t offset)
 {
-    const struct pwm_ehrpwm_config *config = dev->config;
-    return sys_read16(config->base + offset);
+    const struct pwm_ehrpwm_config *config = DEV_CFG(dev);
+    return sys_read16(config->base.addr + offset);
 }
 
 static inline void ehrpwm_write(const struct device *dev, uint32_t offset, uint16_t value)
 {
-    const struct pwm_ehrpwm_config *config = dev->config;
-    sys_write16(value, config->base + offset);
+    const struct pwm_ehrpwm_config *config = DEV_CFG(dev);
+    sys_write16(value, config->base.addr + offset);
 }
 
 static inline void ehrpwm_modify(const struct device *dev, uint32_t offset, 
@@ -99,7 +106,7 @@ static int set_prescale_div(uint32_t period_cycles, uint16_t *prescale_div,
 
 static void configure_polarity(const struct device *dev, uint32_t channel)
 {
-    struct pwm_ehrpwm_data *data = dev->data;
+    struct pwm_ehrpwm_data *data = DEV_DATA(dev);
     uint16_t aqctl_val;
     uint32_t aqctl_reg;
 
@@ -126,7 +133,7 @@ static int pwm_ehrpwm_set_cycles(const struct device *dev, uint32_t channel,
         return -EINVAL;
     }
 
-    struct pwm_ehrpwm_data *data = dev->data;
+    struct pwm_ehrpwm_data *data = DEV_DATA(dev);
     uint16_t prescale_div, tb_clk_div;
 
     /* Check if period conflicts with other channels */
@@ -171,32 +178,41 @@ static int pwm_ehrpwm_get_cycles_per_sec(const struct device *dev,
         return -EINVAL;
     }
 
-    struct pwm_ehrpwm_data *data = dev->data;
+    struct pwm_ehrpwm_data *data = DEV_DATA(dev);
     *cycles = data->clk_rate;
     return 0;
 }
 
 static int pwm_ehrpwm_init(const struct device *dev)
 {
-    struct pwm_ehrpwm_data *data = dev->data;
+    struct pwm_ehrpwm_data *data = DEV_DATA(dev);
+    const struct pwm_ehrpwm_config *cfg = DEV_CFG(dev);
 
     /* ideally Get clock rate, but as clock subsystem isnt ready yet,
      we will use a default value */
     data->clk_rate = DEFAULT_CLK_RATE;
 
+    int ret = pinctrl_apply_state(cfg->pcfg, PINCTRL_STATE_DEFAULT);
+	if (ret < 0) {
+		LOG_ERR("failed to apply pinctrl");
+		return ret;
+	}
 
     return 0;
 }
 
-static DEVICE_API(pwm,pwm_ehrpwm_driver_api) = {
+static DEVICE_API(pwm, pwm_ehrpwm_driver_api) = {
     .set_cycles = pwm_ehrpwm_set_cycles,
     .get_cycles_per_sec = pwm_ehrpwm_get_cycles_per_sec,
 };
 
 #define PWM_EHRPWM_INIT(n) \
+	PINCTRL_DT_INST_DEFINE(n);\
+    LOG_INSTANCE_REGISTER(pwm_ehrpwm, n, CONFIG_PWM_LOG_LEVEL); \
     static struct pwm_ehrpwm_data pwm_ehrpwm_data_##n; \
     static const struct pwm_ehrpwm_config pwm_ehrpwm_config_##n = { \
-        .base = DT_INST_REG_ADDR(n), \
+		DEVICE_MMIO_NAMED_ROM_INIT(base, DT_DRV_INST(n)),                               \
+        .pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),            \
     }; \
     DEVICE_DT_INST_DEFINE(n, \
             pwm_ehrpwm_init, \
