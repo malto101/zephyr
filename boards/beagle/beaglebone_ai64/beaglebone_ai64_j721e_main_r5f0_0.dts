@@ -59,9 +59,9 @@
 	current-speed = <115200>;
 };
 
-&pwm4 {
+&pwm0 {
 	status = "okay";
-	pinctrl-0 = <&pwm4_B_default>;
+	pinctrl-0 = <&pwm0_A_default &pwm0_B_default>;
 	pinctrl-names = "default";
 	
 };

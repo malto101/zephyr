@@ -132,10 +132,10 @@
 		status = "disabled";
 	};
 
-	pwm4: pwm@3040000 {
+	pwm0: pwm@3000000 {
 		compatible = "ti,ehrpwm-pwm";
-		reg = <0x03040000 0x1000>;
-		interrupts = <0 108 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		reg = <0x03000000 0x1000>;
+		interrupts = <0 104 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 		interrupt-parent = <&vim>;
 		status = "disabled";
 		#pwm-cells = <3>;
