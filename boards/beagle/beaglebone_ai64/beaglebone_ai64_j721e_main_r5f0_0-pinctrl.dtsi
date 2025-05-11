@@ -31,7 +31,11 @@
 		pinmux = <K3_PINMUX(0x164, PIN_OUTPUT, MUX_MODE_6)>;
 	};
 	pwm0_B_default: pwm0_B_default {
-		/* 0x1dc is the address of padconfig register of p8.18 and 2 is mux mode */
+		/* 0x1dc is the address of padconfig register of p8.18 and 6 is mux mode */
 		pinmux = <K3_PINMUX(0x168, PIN_OUTPUT, MUX_MODE_6)>;
+	};
+	pwm4_B_default: pwm4_B_default {
+		/* 0x1e0 is the address of padconfig register of p9.25 and 6 is mux mode */
+		pinmux = <K3_PINMUX(0x1a4, PIN_OUTPUT, MUX_MODE_6)>;
 	};
 };

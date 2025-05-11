@@ -141,6 +141,52 @@
 		#pwm-cells = <3>;
 	};
 
+	pwm1: pwm@3010000 {
+		compatible = "ti,ehrpwm-pwm";
+		reg = <0x03010000 0x1000>;
+		interrupts = <0 105 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		status = "disabled";
+		#pwm-cells = <3>;
+
+	};
+
+	pwm2: pwm@3020000 {
+		compatible = "ti,ehrpwm-pwm";
+		reg = <0x03020000 0x1000>;
+		interrupts = <0 106 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		status = "disabled";
+		#pwm-cells = <3>;
+	};
+
+	pwm3: pwm@3030000 {
+		compatible = "ti,ehrpwm-pwm";
+		reg = <0x03030000 0x1000>;
+		interrupts = <0 107 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		status = "disabled";
+		#pwm-cells = <3>;
+	};
+
+	pwm4: pwm@3040000 {
+		compatible = "ti,ehrpwm-pwm";
+		reg = <0x03040000 0x1000>;
+		interrupts = <0 108 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		status = "disabled";
+		#pwm-cells = <3>;
+	};
+	
+	pwm5: pwm@3050000 {
+		compatible = "ti,ehrpwm-pwm";
+		reg = <0x03050000 0x1000>;
+		interrupts = <0 109 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		status = "disabled";
+		#pwm-cells = <3>;
+	};
+
 	uart1: uart@2810000 {
 		compatible = "ns16550";
 		reg = <0x02810000 0x100>;
