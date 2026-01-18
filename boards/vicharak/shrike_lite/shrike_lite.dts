@@ -89,6 +89,27 @@
 	pinctrl-names = "default";
 };
 
+&spi0 {
+	status = "okay";
+	pinctrl-0 = <&fpga_flash_default>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpio0 1 GPIO_ACTIVE_LOW>; /* CS on pin 1 (SPI0_CSN_P1) for fpga@0 */
+
+	fpga0: fpga@0 {
+		compatible = "renesas,slg47910v";
+		reg = <0>;
+		spi-max-frequency = <16000000>; /* 16MHz as per shrike-ctl main.c */
+		pwr-gpios = <&gpio0 12 GPIO_ACTIVE_HIGH>;
+		en-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+		reset-delay-ms = <30>; /* Matches shrike-ctl: sleep_ms(3) */
+		init-ss-low-delay-ms = <30>; /* Matches shrike-ctl: SS low for 3ms */
+		init-ss-high-delay-us = <30>; /* Matches shrike-ctl: SS high for 3us */
+		power-on-delay-us = <1000>;
+		power-off-delay-us = <100>;
+		config-complete-delay-us = <1000>;
+	};
+};
+
 &adc {
 	status = "okay";
 	pinctrl-0 = <&adc_default>;

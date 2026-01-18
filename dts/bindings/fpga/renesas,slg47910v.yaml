@@ -1,0 +1,61 @@
+# Copyright (c) 2025 Dhruv Menon <dhruvmenon1104@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+description: Renesas SLG47910V ForgeFPGA SPI configuration interface
+
+compatible: "renesas,slg47910v"
+
+include: spi-device.yaml
+
+properties:
+  pwr-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      Power control GPIO pin for the FPGA.
+      Example usage:
+      pwr-gpios = <&gpio0 12 GPIO_ACTIVE_HIGH>;
+  en-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      Enable control GPIO pin for the FPGA.
+      Example usage:
+      en-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+  reset-delay-ms:
+    type: int
+    default: 30
+    description: |
+      Delay (in milliseconds) for power-off reset sequence.
+      Matches shrike-ctl reference implementation. Default is 3ms.
+  init-ss-low-delay-ms:
+    type: int
+    default: 30
+    description: |
+      Delay (in milliseconds) for SS low during FPGA initialization after power-on.
+      Matches shrike-ctl reference implementation. Default is 3ms.
+  init-ss-high-delay-us:
+    type: int
+    default: 30
+    description: |
+      Delay (in microseconds) for SS high after initialization.
+      Matches shrike-ctl reference implementation. Default is 3us.
+  power-on-delay-us:
+    type: int
+    default: 1000
+    description: |
+      Delay (in microseconds) between asserting PWR and EN during power-on sequence.
+      Default is 1000us.
+  power-off-delay-us:
+    type: int
+    default: 100
+    description: |
+      Delay (in microseconds) between deasserting EN and PWR during power-off sequence.
+      Default is 100us.
+  config-complete-delay-us:
+    type: int
+    default: 1000
+    description: |
+      Delay (in microseconds) after bitstream transfer to wait for configuration to complete.
+      Note: SLG47910V does not have a DONE pin, so configuration completion is verified
+      by timing. Default is 1000us.

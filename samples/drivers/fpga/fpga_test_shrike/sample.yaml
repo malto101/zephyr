@@ -1,0 +1,10 @@
+sample:
+  name: FPGA Test for Shrike-lite
+tests:
+  - sample.fpga_test_shrike:
+      tags:
+        - fpga
+        - shrike_lite
+      platform_allow: shrike_lite
+      integration_platforms:
+        - shrike_lite

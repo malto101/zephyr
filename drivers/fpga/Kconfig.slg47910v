@@ -1,0 +1,12 @@
+# Copyright (c) 2025 Dhruv Menon <dhruvmenon1104@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+config SLG47910V_FPGA
+	bool "Renesas SLG47910V ForgeFPGA SPI driver"
+	default y
+	depends on DT_HAS_RENESAS_SLG47910V_ENABLED
+	depends on SPI
+	depends on GPIO
+	imply CRC
+	help
+	  Enable support for the Renesas SLG47910V ForgeFPGA SPI configuration driver.
