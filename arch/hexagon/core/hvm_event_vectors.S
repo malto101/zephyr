@@ -135,9 +135,16 @@ SECTION_FUNC(TEXT, _unhandled_event)
 	r0 = #0xFF
 	jump ##z_hexagon_fatal_error
 
+/*
+ * Route through the enhanced handler, like every other real event below,
+ * so a machine check gets the same full volatile-context save as any
+ * other event before z_hexagon_event_handler() calls z_hexagon_fatal_error()
+ * (irq_manage.c) -- jumping to z_hexagon_fatal_error() directly here, as
+ * an earlier version of this file did, left the interrupted register
+ * state nowhere for a postmortem dump or gdbstub to read back.
+ */
 SECTION_FUNC(TEXT, _machine_check_handler)
-	r0 = #1
-	jump ##z_hexagon_fatal_error
+	jump ##z_hexagon_enhanced_machine_check
 
 /*
  * General exception handler.
