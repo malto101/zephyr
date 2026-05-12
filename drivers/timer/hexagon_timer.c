@@ -93,7 +93,18 @@ void arch_busy_wait(uint32_t usec_to_wait)
 	uint64_t wait_cycles = (freq * usec_to_wait) / 1000000ULL;
 	uint64_t target = start + wait_cycles;
 
+	/*
+	 * hexagon_vm_yield() hints the hypervisor to let other guest work
+	 * run instead of spinning through hvmt_gettime hypercalls back-to-
+	 * back. A true blocking wait (hvmt_settimeout() + hexagon_vm_wait())
+	 * would do better still, but that shares the single hardware timer
+	 * compare register with the tick driver's own deadline
+	 * (timer_driver_set_compare() above) -- safely reprogramming it here
+	 * means saving and exactly restoring whatever deadline the tick core
+	 * already has armed, which needs more validation on real hardware
+	 * than this change has had.
+	 */
 	while (hexagon_vm_timerop(hvmt_gettime, 0, 0) < target) {
-		/* spin */
+		hexagon_vm_yield();
 	}
 }
