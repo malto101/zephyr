@@ -20,5 +20,13 @@ CONFIG_STACK_SENTINEL=y
 CONFIG_THREAD_CUSTOM_DATA=y
 
 # QEMU emulation.
+#
+# icount sleep must be on. With sleep=off QEMU is supposed to warp the clock to
+# the next deadline whenever the guest idles, but the guest idles inside an H2
+# vmwait hypercall, which QEMU does not see as a halted CPU. It therefore
+# advances virtual time by executing instructions, and a test that spends most
+# of its time asleep costs real host time in proportion to the time it slept:
+# tests/kernel/sleep (3.3 s of simulated time) does not finish in 240 s with
+# sleep=off, and takes 20 s with it on.
 CONFIG_QEMU_ICOUNT_SHIFT=3
 CONFIG_QEMU_ICOUNT_SLEEP=y

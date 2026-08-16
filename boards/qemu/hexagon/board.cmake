@@ -10,11 +10,17 @@ set(QEMU_BOARD_FLAGS
 )
 
 # Hexagon boots Zephyr as an H2 hypervisor guest.  QEMU loads H2's
-# "loadlinux" as -bios; H2 then boots the Zephyr ELF placed at the
+# "loadlinux" as -kernel; H2 then boots the Zephyr ELF placed at the
 # guest load address via -device loader.
 #
-# The Hexagon LLVM cross-toolchain (clang+llvm-*-cross-hexagon-*) ships its
-# own hexagon_loadlinux_v* firmware under <toolchain>/share/qemu/.
+# loadlinux is a full Hexagon ELF, so it has to come in through -kernel:
+# the virt machine's -bios path is load_image_targphys() of a raw blob at
+# the reset vector, capped at 64 KiB, and rejects an ELF this size with
+# "Could not load BIOS".
+#
+# Point HEXAGON_H2_LOADLINUX (env var or cmake -D) at an H2 build, e.g. from
+# https://github.com/qualcomm/hexagon-hypervisor. Without it QEMU is left to
+# find its own firmware, which only works on a QEMU that bundles one.
 if(DEFINED ENV{HEXAGON_H2_LOADLINUX})
   set(HEXAGON_H2_LOADLINUX $ENV{HEXAGON_H2_LOADLINUX})
 endif()
@@ -31,8 +37,14 @@ if(HEXAGON_H2_LOADLINUX)
   endif()
 endif()
 
+# Pass zephyr.elf via device loader below instead of -kernel (the generic
+# loader parses ELF program headers and places segments at their physical
+# addresses, so no explicit addr= or objcopy-to-bin is needed). Explicitly
+# clear QEMU_KERNEL_OPTION so cmake/emu/qemu.cmake doesn't fall back to its
+# own "-kernel <zephyr.elf>" default, which would boot Zephyr directly
+# instead of through the H2 hypervisor.
 if(HEXAGON_H2_LOADLINUX)
-  set(QEMU_KERNEL_OPTION "-bios;${HEXAGON_H2_LOADLINUX}")
+  set(QEMU_KERNEL_OPTION "-kernel;${HEXAGON_H2_LOADLINUX}")
 else()
   set(QEMU_KERNEL_OPTION "")
 endif()
