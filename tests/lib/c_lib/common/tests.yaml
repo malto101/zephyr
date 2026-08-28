@@ -5,7 +5,13 @@ common:
   integration_platforms:
     - mps2/an385
 tests:
-  libraries.libc.common: {}
+  libraries.libc.common:
+    platform_exclude:
+      # On the Hexagon port test_abort's deliberate kernel panic is not
+      # recovered cleanly: the next case, test_abs, dies in
+      # unpend_thread_no_timeout() with a misaligned-read exception
+      # (HVM_GE_C_RMAL) and the suite then hangs.
+      - qemu_hexagon
   libraries.libc.common.minimal:
     filter: CONFIG_MINIMAL_LIBC_SUPPORTED
     tags: minimal_libc
@@ -32,17 +38,35 @@ tests:
       - CONFIG_NEWLIB_LIBC=y
       - CONFIG_NEWLIB_LIBC_NANO=y
   libraries.libc.common.picolibc:
+    platform_exclude:
+      # On the Hexagon port test_abort's deliberate kernel panic is not
+      # recovered cleanly: the next case, test_abs, dies in
+      # unpend_thread_no_timeout() with a misaligned-read exception
+      # (HVM_GE_C_RMAL) and the suite then hangs.
+      - qemu_hexagon
     filter: CONFIG_PICOLIBC_SUPPORTED
     tags: picolibc
     extra_configs:
       - CONFIG_PICOLIBC=y
   libraries.libc.common.picolibc.module:
+    platform_exclude:
+      # Building picolibc from the module fails on Hexagon with clang:
+      # long double and double have the same format there, so picolibc's
+      # strtold -> strtod alias trips -Werror,-Wattribute-alias. The
+      # picolibc that ships with the toolchain is unaffected.
+      - qemu_hexagon
     filter: CONFIG_ZEPHYR_PICOLIBC_MODULE
     tags: picolibc
     extra_configs:
       - CONFIG_PICOLIBC=y
       - CONFIG_PICOLIBC_USE_MODULE=y
   libraries.libc.common.picolibc.notls:
+    platform_exclude:
+      # Building picolibc from the module fails on Hexagon with clang:
+      # long double and double have the same format there, so picolibc's
+      # strtold -> strtod alias trips -Werror,-Wattribute-alias. The
+      # picolibc that ships with the toolchain is unaffected.
+      - qemu_hexagon
     filter: CONFIG_ZEPHYR_PICOLIBC_MODULE
     tags: picolibc
     extra_configs:

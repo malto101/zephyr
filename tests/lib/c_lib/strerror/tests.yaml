@@ -45,6 +45,12 @@ tests:
     extra_configs:
       - CONFIG_PICOLIBC=y
   libraries.libc.strerror.picolibc.module:
+    platform_exclude:
+      # Building picolibc from the module fails on Hexagon with clang:
+      # long double and double have the same format there, so picolibc's
+      # strtold -> strtod alias trips -Werror,-Wattribute-alias. The
+      # picolibc that ships with the toolchain is unaffected.
+      - qemu_hexagon
     filter: CONFIG_ZEPHYR_PICOLIBC_MODULE
     tags: picolibc
     ignore_faults: true
@@ -52,6 +58,12 @@ tests:
       - CONFIG_PICOLIBC=y
       - CONFIG_PICOLIBC_USE_MODULE=y
   libraries.libc.strerror.picolibc.notls:
+    platform_exclude:
+      # Building picolibc from the module fails on Hexagon with clang:
+      # long double and double have the same format there, so picolibc's
+      # strtold -> strtod alias trips -Werror,-Wattribute-alias. The
+      # picolibc that ships with the toolchain is unaffected.
+      - qemu_hexagon
     filter: CONFIG_ZEPHYR_PICOLIBC_MODULE
     tags: picolibc
     ignore_faults: true

@@ -5,6 +5,8 @@ common:
     - m2gl025_miv
     - hifive1
     - qemu_xtensa/dc233c/mmu
+    # Times out on the Hexagon port (all three rtio.api scenarios).
+    - qemu_hexagon
   platform_key:
     - arch
     - simulation

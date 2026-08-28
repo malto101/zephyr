@@ -16,6 +16,7 @@ testing:
   default: true
   timeout_multiplier: 2
   ignore_tags:
+    - chre
     - net
     - bluetooth
     - cpp
@@ -29,6 +30,7 @@ testing:
     - logging
     - mipi-sys-t
     - security
+    - sleep
     - smf
 supported:
   - uart

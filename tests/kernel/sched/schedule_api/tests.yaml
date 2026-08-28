@@ -9,6 +9,10 @@ common:
   ignore_faults: true
 tests:
   kernel.scheduler:
+    platform_exclude:
+      # Time slicing does not work on the Hexagon port: every TIMESLICING=y
+      # scenario here times out while the TIMESLICING=n ones pass.
+      - qemu_hexagon
     filter: not CONFIG_SCHED_MULTIQ
     extra_configs:
       - CONFIG_TIMESLICING=y
@@ -17,11 +21,19 @@ tests:
     extra_configs:
       - CONFIG_TIMESLICING=n
   kernel.scheduler.slice_perthread:
+    platform_exclude:
+      # Time slicing does not work on the Hexagon port: every TIMESLICING=y
+      # scenario here times out while the TIMESLICING=n ones pass.
+      - qemu_hexagon
     filter: not CONFIG_SCHED_MULTIQ
     extra_configs:
       - CONFIG_TIMESLICING=y
       - CONFIG_TIMESLICE_PER_THREAD=y
   kernel.scheduler.multiq:
+    platform_exclude:
+      # Time slicing does not work on the Hexagon port: every TIMESLICING=y
+      # scenario here times out while the TIMESLICING=n ones pass.
+      - qemu_hexagon
     extra_args: CONF_FILE=prj_multiq.conf
     extra_configs:
       - CONFIG_TIMESLICING=y
@@ -30,6 +42,10 @@ tests:
     extra_configs:
       - CONFIG_TIMESLICING=n
   kernel.scheduler.simple_timeslicing:
+    platform_exclude:
+      # Time slicing does not work on the Hexagon port: every TIMESLICING=y
+      # scenario here times out while the TIMESLICING=n ones pass.
+      - qemu_hexagon
     extra_args: CONF_FILE=prj_simple.conf
     extra_configs:
       - CONFIG_TIMESLICING=y

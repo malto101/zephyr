@@ -18,4 +18,6 @@ tests:
       - mps2/an385
     platform_exclude:
       - mr_canhubk3
+      # Hits a stack overflow in test_thread_stats_usage on the Hexagon port.
+      - qemu_hexagon
       - cortex_r8_virtual

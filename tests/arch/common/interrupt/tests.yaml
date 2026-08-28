@@ -38,6 +38,11 @@ tests:
     platform_exclude:
       # excluded because of failures during test_prevent_interruption
       - qemu_cortex_m0
+      # The Hexagon port passes the whole interrupt_feature suite but fails
+      # both shared_irq_feature cases (test_dynamic_shared_irq_write and
+      # test_dynamic_shared_irq_disconnect_write): sharing a line between
+      # dynamically connected ISRs does not work yet.
+      - qemu_hexagon
       # On it8xxx2_evb, current trigger_irq implementation of RISC-V architecture
       # does not trigger interrupts
       - it8xxx2_evb

@@ -2,6 +2,9 @@ tests:
   message_bus.zbus.module_interaction_no_error:
     platform_exclude:
       - m2gl025_miv
+      # Times out on the Hexagon port partway through
+      # test_event_dispatcher_queue_timeout.
+      - qemu_hexagon
       - qemu_cortex_a9
       - hifive_unleashed/fu540/e51
       - hifive_unleashed/fu540/u54

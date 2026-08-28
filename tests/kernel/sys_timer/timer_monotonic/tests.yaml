@@ -1,5 +1,11 @@
 tests:
   kernel.timer.monotonic:
+    platform_exclude:
+      # Times out on the Hexagon port: k_busy_wait() polls the hypervisor
+      # clock, and under QEMU that costs about 0.19 s of host time per
+      # simulated millisecond (a measured 10 ms wait takes 1.92 s), so any
+      # suite that busy-waits blows through its budget.
+      - qemu_hexagon
     tags:
       - kernel
       - timer

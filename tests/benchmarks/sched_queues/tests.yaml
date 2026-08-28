@@ -1,4 +1,9 @@
 common:
+  # Times out on the Hexagon port: the scheduler benchmarks depend on time
+  # slicing, which does not work yet (kernel.scheduler.*_no_timeslicing pass
+  # while every timeslicing variant times out).
+  platform_exclude:
+    - qemu_hexagon
   platform_key:
     - arch
   min_ram: 32

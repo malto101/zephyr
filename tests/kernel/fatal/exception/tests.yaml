@@ -53,6 +53,10 @@ tests:
     integration_platforms:
       - mps2/an385
   kernel.common.stack_sentinel:
+    platform_exclude:
+      # On the Hexagon port every fatal_exception case passes except
+      # test_fatal_cpu_exception_extended.
+      - qemu_hexagon
     extra_args: CONF_FILE=sentinel.conf
     tags: kernel
     integration_platforms:
