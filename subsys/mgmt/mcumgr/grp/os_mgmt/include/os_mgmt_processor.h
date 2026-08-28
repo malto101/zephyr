@@ -192,6 +192,8 @@ extern "C" {
 #define PROCESSOR_NAME "sparc"
 #elif defined(CONFIG_OPENRISC)
 #define PROCESSOR_NAME "openrisc"
+#elif defined(CONFIG_HEXAGON)
+#define PROCESSOR_NAME "hexagon"
 #endif
 
 #if defined(CONFIG_ARCH_POSIX)
