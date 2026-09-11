@@ -284,12 +284,48 @@ SECTIONS
     } GROUP_LINK_IN(RAMABLE_REGION)
 
 #ifdef CONFIG_USERSPACE
-    /* User mode stacks section */
+    /*
+     * A handful of kernel globals need to stay readable (never writable)
+     * from user mode without a syscall -- currently just
+     * _hexagon_user_mode_active (arch/hexagon/core/user_mode_state.c),
+     * which arch_is_user_context() reads directly from whichever mode
+     * happens to be running. Page-aligned at both ends like .user_stacks
+     * below, and kept as its own section rather than folded into
+     * ordinary .bss: HEX_PAGE_SIZE is 64KB, and this image's entire
+     * ordinary .bss/.noinit combined is itself well under 64KB, so
+     * without a dedicated page a single such flag would force the whole
+     * kernel-RAM page containing it back to U-accessible, defeating the
+     * kernel/user RAM split hexagon_mmu_init() builds around these
+     * boundaries. NOLOAD like .bss/.noinit, but -- unlike them -- never
+     * automatically zeroed at boot (neither the generic __bss_start/end
+     * clear loop nor anything else here walks this section), so anything
+     * placed in it must be explicitly zeroed by its own C code before
+     * first use; hexagon_mmu_init() does this for
+     * _hexagon_user_mode_active since it already necessarily runs first.
+     */
+    SECTION_PROLOGUE(.hex_user_readable,(NOLOAD),)
+    {
+        HEXAGON_ROM_RAM_ALIGN
+        z_hex_user_readable_start = .;
+        *(.hex_user_readable)
+        HEXAGON_ROM_RAM_ALIGN
+        z_hex_user_readable_end = .;
+    } GROUP_LINK_IN(RAMABLE_REGION)
+
+    /*
+     * User mode stacks section. Page-aligned at both ends (not just
+     * ALIGN(8)) so hexagon_mmu_init() can map it -- like _app_smem above
+     * -- as its own separately-permissioned (R+W+U) range: everything
+     * between the two is either a real user-mode stack or interior
+     * padding, never kernel-only data that a coarser boundary would drag
+     * into the U-accessible range.
+     */
     SECTION_PROLOGUE(.user_stacks,(NOLOAD),)
     {
-        . = ALIGN(8);
+        HEXAGON_ROM_RAM_ALIGN
         z_user_stacks_start = .;
         *(.user_stacks)
+        HEXAGON_ROM_RAM_ALIGN
         z_user_stacks_end = .;
     } GROUP_LINK_IN(RAMABLE_REGION)
 #endif

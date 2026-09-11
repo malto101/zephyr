@@ -608,6 +608,19 @@ K_APP_DMEM(default_part) int32_t size = (0 - CONFIG_PRIVILEGED_STACK_SIZE -
  */
 ZTEST_USER(userspace, test_userspace_read_priv_stack)
 {
+	/*
+	 * Arm the fault before computing priv_stack_ptr, not after: on
+	 * Hexagon (below), that computation itself reads _current, which is
+	 * `_kernel.cpus[0].current` (kernel_structs.h) on this
+	 * non-CONFIG_SMP arch -- ordinary kernel .bss that hexagon_mmu_init()
+	 * maps without U, so it faults from user mode in exactly the way
+	 * this test wants, even before reaching arch.priv_stack itself. On
+	 * every other architecture this is a no-op reordering: their
+	 * priv_stack_ptr comes from ztest_thread_stack-relative arithmetic
+	 * or a plain local variable, neither of which can fault.
+	 */
+	set_fault(K_ERR_CPU_EXCEPTION);
+
 	/* Try to read from privileged stack. */
 #if defined(CONFIG_ARC)
 	int s[1];
@@ -632,7 +645,6 @@ ZTEST_USER(userspace, test_userspace_read_priv_stack)
 #else
 #error "Not implemented for this architecture"
 #endif
-	set_fault(K_ERR_CPU_EXCEPTION);
 
 	printk("%c\n", *priv_stack_ptr);
 	zassert_unreachable("Read from privileged stack did not fault");
@@ -660,6 +672,11 @@ ZTEST_USER(userspace, test_userspace_read_priv_stack)
  */
 ZTEST_USER(userspace, test_userspace_write_priv_stack)
 {
+	/* See test_userspace_read_priv_stack() above for why this is armed
+	 * before, not after, computing priv_stack_ptr.
+	 */
+	set_fault(K_ERR_CPU_EXCEPTION);
+
 	/* Try to write to privileged stack. */
 #if defined(CONFIG_ARC)
 	int s[1];
@@ -675,7 +692,6 @@ ZTEST_USER(userspace, test_userspace_write_priv_stack)
 #else
 #error "Not implemented for this architecture"
 #endif
-	set_fault(K_ERR_CPU_EXCEPTION);
 
 	*priv_stack_ptr = 42;
 	zassert_unreachable("Write to privileged stack did not fault");

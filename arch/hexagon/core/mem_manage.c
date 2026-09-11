@@ -20,11 +20,15 @@
  *
  * The code and rodata region (__rom_region_start/end) and the data/bss/
  * stacks region (from there through _image_ram_end) are mapped through
- * the L2 tables with different permissions: R+X (no W) for the former,
- * R+W (no X) for the latter. The device MMIO window and H2's own kernel
- * region don't need per-page granularity -- they keep the same direct,
- * single L1-entry 4MB mappings the previous flat map used, just built in
- * C instead of assembly.
+ * the L2 tables with different permissions: R+X (no W) for the former;
+ * for the latter, R+W (no X) everywhere, further split (under
+ * CONFIG_USERSPACE) into U and non-U sub-ranges along the
+ * _app_smem/z_user_stacks boundaries already in
+ * soc/qemu/hexagon/linker.ld -- see the comment in hexagon_mmu_init()
+ * below. The device MMIO window and H2's own kernel region don't need
+ * per-page granularity -- they keep the same direct, single L1-entry
+ * 4MB mappings the previous flat map used, just built in C instead of
+ * assembly.
  *
  * This *is* the only page table ever installed with H2 (built once, at
  * boot, before z_prep_c() runs) -- there is deliberately no second,
@@ -37,17 +41,32 @@
  * the range asked for is always already covered by this same table, so
  * arch_mem_map()/arch_mem_unmap() remain no-ops.
  *
- * Known limitation: the page tables themselves (hexagon_pgd/hexagon_l2)
- * live in the ordinary R+W+U data/bss mapping, not a supervisor-only
- * one, so user-mode code could in principle overwrite its own page
- * tables directly rather than through a syscall. Not addressed here;
- * would need its own linker section mapped without __HVM_PTE_U.
+ * Known limitation, now narrower than it was: hexagon_pgd/hexagon_l2
+ * below are ordinary static arrays with no K_APP_BMEM/DMEM tag, so
+ * CONFIG_USERSPACE's kernel/user RAM split (again, see
+ * hexagon_mmu_init()) now maps them non-U like any other kernel .bss --
+ * user-mode code can no longer overwrite its own page tables directly.
+ * What's still missing is *dynamic* per-domain/per-thread permission
+ * changes: arch_mem_domain_partition_add/remove() and
+ * arch_mem_domain_thread_add/remove() (userspace.c) remain no-ops, so
+ * every app-shared-memory partition and every thread's stack is
+ * uniformly U-accessible to any user thread regardless of actual domain
+ * membership, rather than genuinely gated by it.
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/linker/linker-defs.h>
+#include <zephyr/arch/hexagon/syscall.h>
 #include <hexagon_vm.h>
+
+#ifdef CONFIG_USERSPACE
+/* .hex_user_readable bounds (soc/qemu/hexagon/linker.ld) -- Hexagon-
+ * specific, so not part of the generic zephyr/linker/linker-defs.h set.
+ */
+extern char z_hex_user_readable_start[];
+extern char z_hex_user_readable_end[];
+#endif
 
 /* L1 (PGD) geometry: 1024 entries, each spanning 4MB of address space. */
 #define HEX_PGD_ENTRIES  1024
@@ -216,8 +235,81 @@ void hexagon_mmu_init(void)
 	 * gap -- itself harmlessly covered by the ROM mapping above --
 	 * between __rom_region_end and it.
 	 */
+#ifdef CONFIG_USERSPACE
+	/*
+	 * Split the R+W range into kernel-only and user-accessible pieces
+	 * instead of one blanket R+W+U mapping. Without this split, any
+	 * ordinary kernel .bss/.data object -- struct k_thread included --
+	 * is directly readable and writable from user mode with no fault at
+	 * all, regardless of memory-domain membership: this was the "known
+	 * limitation" this file's header comment used to describe, and the
+	 * root cause behind tests/kernel/mem_protect/userspace's
+	 * read/write_kernram, read/write_kernel_data and
+	 * read/write_priv_stack all failing to fault.
+	 *
+	 * _app_smem_start/end, z_hex_user_readable_start/end and
+	 * z_user_stacks_start/end are each aligned to HEXAGON_ROM_RAM_ALIGN
+	 * at both ends (APP_SHARED_ALIGN for the first, an explicit
+	 * alignment added to soc/qemu/hexagon/linker.ld's two other
+	 * sections), so every sub-range below is a whole number of L2
+	 * pages, exactly like rom_end/ram_end already are --
+	 * hexagon_l2_map_range() would otherwise assert. That page
+	 * granularity is also why .hex_user_readable exists as a section of
+	 * its own rather than a special case bolted on afterwards: this
+	 * image's entire ordinary .bss/.noinit combined is itself well
+	 * under one 64KB page, so carving U access back out for one flag
+	 * *after* mapping the kernel-RAM range below would reopen that
+	 * whole page, not just the flag.
+	 *
+	 * This is not real per-domain/per-thread isolation: every app-
+	 * shared-memory partition from every source file is uniformly
+	 * U-accessible to any user thread, and every user thread's stack is
+	 * accessible to any other, regardless of which memory domain either
+	 * is actually in -- that needs dynamic per-page-table updates from
+	 * arch_mem_domain_partition_add/remove() and
+	 * arch_mem_domain_thread_add/remove() (currently no-ops) and is not
+	 * attempted here. What this does fix is ordinary kernel state that
+	 * was never meant to be user-accessible in the first place.
+	 */
+	uintptr_t smem_start = (uintptr_t)_app_smem_start;
+	uintptr_t smem_end = (uintptr_t)_app_smem_end;
+	uintptr_t ur_start = (uintptr_t)z_hex_user_readable_start;
+	uintptr_t ur_end = (uintptr_t)z_hex_user_readable_end;
+	uintptr_t ustacks_start = (uintptr_t)z_user_stacks_start;
+	uintptr_t ustacks_end = (uintptr_t)z_user_stacks_end;
+
+	__ASSERT(smem_start == rom_end,
+		 "app shared memory 0x%lx does not start at rom_end 0x%lx",
+		 (unsigned long)smem_start, (unsigned long)rom_end);
+
+	/* Application shared memory (K_APP_BMEM/K_APP_DMEM): R+W+U. */
+	hexagon_l2_map_range(smem_start, smem_end,
+			     __HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_U, __HEXAGON_C_WB_L2);
+
+	/* Ordinary kernel .data/.tdata/.tbss/.bss/.noinit: R+W, no U. */
+	hexagon_l2_map_range(smem_end, ur_start,
+			     __HVM_PTE_R | __HVM_PTE_W, __HEXAGON_C_WB_L2);
+
+	/*
+	 * .hex_user_readable (_hexagon_user_mode_active): R+W+U. Never
+	 * automatically zeroed at boot like ordinary .bss, so zero it
+	 * explicitly here -- nothing can have read it before this point.
+	 */
+	hexagon_l2_map_range(ur_start, ur_end,
+			     __HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_U, __HEXAGON_C_WB_L2);
+	_hexagon_user_mode_active = 0;
+
+	/* User-mode thread stacks (K_THREAD_STACK_DEFINE): R+W+U. */
+	hexagon_l2_map_range(ustacks_start, ustacks_end,
+			     __HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_U, __HEXAGON_C_WB_L2);
+
+	/* Interrupt stack + tail padding: R+W, no U. */
+	hexagon_l2_map_range(ustacks_end, ram_end,
+			     __HVM_PTE_R | __HVM_PTE_W, __HEXAGON_C_WB_L2);
+#else
 	hexagon_l2_map_range(rom_end, ram_end,
 			     __HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_U, __HEXAGON_C_WB_L2);
+#endif
 
 	/*
 	 * PL011 UART at 0x10000000: supervisor-only (no U), matching the
@@ -243,6 +335,67 @@ void hexagon_mmu_init(void)
 		hexagon_vm_stop(VM_STOP_HALT);
 	}
 }
+
+#ifdef CONFIG_USERSPACE
+/*
+ * Grant R+W+U access to a K_USER thread's own stack, at whatever page(s)
+ * it actually lives in. Called from arch_user_mode_enter() (userspace.c)
+ * every time a thread -- freshly created or already running -- is about
+ * to execute in user mode.
+ *
+ * hexagon_mmu_init()'s kernel/user RAM split above only covers memory
+ * whose extent is known at link time (_app_smem, .user_stacks,
+ * .hex_user_readable): a stack allocated at runtime via
+ * k_thread_stack_alloc() (CONFIG_DYNAMIC_THREAD_STACK_SIZE) can instead
+ * come from _system_heap's backing storage, ordinary kernel .noinit that
+ * the split maps without U. Rather than making that whole heap -- shared
+ * by every kernel subsystem, not just user stacks -- blanket-U (a
+ * materially bigger exposure than any of the narrow, purpose-built
+ * regions above), grant U access to just the pages this one thread's
+ * stack occupies, every time it (re-)enters user mode.
+ *
+ * hexagon_l2_map_range() writes directly into the live hexagon_l2 pool
+ * already installed via hexagon_vm_newmap() above -- no second table, no
+ * re-install -- so H2's next walk of these PTEs sees the new bits as
+ * soon as the cache is flushed and any stale translation is cleared.
+ * hexagon_vm_clrmap() (also used by tests/kernel/mem_protect/userspace's
+ * test_userspace_disable_mmu_mpu from user mode, deliberately rejected
+ * there) is exactly that: it invalidates cached translations for a
+ * range without touching the table, cheap enough to call on every
+ * user-mode entry -- unlike hexagon_vm_newmap(), it is not a full
+ * table swap, so this does not reintroduce the TLB-pressure regression
+ * HEX_PAGE_SIZE was widened to 64KB to fix.
+ *
+ * Collateral, same page-granularity trade-off as elsewhere in this file:
+ * whatever else shares this stack's 64KB page(s) becomes U-accessible
+ * too. And this is grant-only, with no revoke: once a page has hosted a
+ * user stack it stays U-accessible even after that thread exits and the
+ * page is freed and reused for something else -- the same
+ * already-permanent-U model .user_stacks itself has, not a new weaker
+ * guarantee. Real revocation needs the same dynamic per-domain/
+ * per-thread MMU project already deferred for
+ * arch_mem_domain_partition_remove()/arch_mem_domain_thread_remove()
+ * (userspace.c).
+ */
+void hexagon_mmu_grant_user_stack(uintptr_t start, size_t size)
+{
+	uintptr_t page_start = ROUND_DOWN(start, HEX_PAGE_SIZE);
+	uintptr_t page_end = ROUND_UP(start + size, HEX_PAGE_SIZE);
+
+	hexagon_l2_map_range(page_start, page_end,
+			     __HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_U, __HEXAGON_C_WB_L2);
+
+	/*
+	 * Flush the whole L2 pool rather than tracking exactly which
+	 * table(s) page_start..page_end touched: it is small (at most
+	 * HEX_MAX_L2_TABLES * HEX_L2_TABLE_BYTES, a couple KB) and this is
+	 * not a hot path.
+	 */
+	hexagon_vm_cache(hvmc_dccleaninva, (uint32_t)(uintptr_t)hexagon_l2,
+			 (uint32_t)sizeof(hexagon_l2));
+	hexagon_vm_clrmap((void *)page_start, page_end - page_start);
+}
+#endif /* CONFIG_USERSPACE */
 
 #ifdef CONFIG_MMU
 

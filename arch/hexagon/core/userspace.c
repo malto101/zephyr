@@ -15,9 +15,11 @@
 #include <zephyr/linker/linker-defs.h>
 #include <kernel_internal.h>
 #include <hexagon_vm.h>
-#include <offsets_short.h>
 
 #ifdef CONFIG_USERSPACE
+
+/* mem_manage.c; see its definition for the full rationale. */
+extern void hexagon_mmu_grant_user_stack(uintptr_t start, size_t size);
 
 int arch_buffer_validate(const void *addr, size_t size, int write)
 {
@@ -179,22 +181,24 @@ static void __used __naked hexagon_user_thread_exit(void)
 	 * the compiler may optimize away the user-mode check.
 	 *
 	 * Syscall convention: r0 = arg (thread), r6 = syscall number.
-	 * k_current_get() is just a memory read (no privilege needed).
+	 *
+	 * r0 = _hexagon_current_thread_user_visible, not
+	 * _kernel.cpus[0].current: this runs as a real user thread's return
+	 * address, in genuine guest-user mode, and _kernel is ordinary
+	 * kernel .bss that hexagon_mmu_init() maps without U.
+	 * _hexagon_current_thread_user_visible (syscall.h) is kept in sync
+	 * with _current specifically so this read stays legal.
 	 */
 	__asm__ volatile(
-		/* r0 = _kernel.cpus[0].current (k_current_get) */
-		"r0 = ##_kernel\n\t"
-		"r0 = add(r0, #%[cpus_off])\n\t"
-		"r0 = memw(r0+#%[cur_off])\n\t"
+		"r0 = ##_hexagon_current_thread_user_visible\n\t"
+		"r0 = memw(r0+#0)\n\t"
 		/* syscall: k_thread_abort(r0) */
 		"r6 = #%[sc_id]\n\t"
 		"trap0(#0x1)\n\t"
 		/* should not return -- loop as backstop */
 		"1: jump 1b\n\t"
 		:
-		: [cpus_off] "i"(___kernel_t_cpus_OFFSET),
-		  [cur_off] "i"(___cpu_t_current_OFFSET),
-		  [sc_id] "i"(K_SYSCALL_K_THREAD_ABORT)
+		: [sc_id] "i"(K_SYSCALL_K_THREAD_ABORT)
 		:
 	);
 }
@@ -237,6 +241,21 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 	__ASSERT(user_sp >= thread->stack_info.start,
 		 "declared stack (%zu bytes) too small to hold TLS/headroom (%zu bytes)",
 		 thread->stack_info.size, thread->stack_info.delta);
+
+	/*
+	 * Most K_THREAD_STACK_DEFINE()'d stacks already live in
+	 * .user_stacks, which hexagon_mmu_init() maps R+W+U unconditionally
+	 * at boot -- but a stack allocated at runtime via
+	 * k_thread_stack_alloc() (CONFIG_DYNAMIC_THREAD_STACK_SIZE) can
+	 * instead come from _system_heap's backing storage, ordinary kernel
+	 * .noinit that the boot-time split maps without U. Grant this one
+	 * thread's own stack U access now, unconditionally: harmless
+	 * (memory already covered by .user_stacks) when it isn't needed,
+	 * required when it is. See hexagon_mmu_grant_user_stack() for why
+	 * this is safe to call on every entry to user mode rather than only
+	 * once.
+	 */
+	hexagon_mmu_grant_user_stack(thread->stack_info.start, thread->stack_info.size);
 
 	/*
 	 * Save a kernel SP as GOSP.  When H2 delivers an event from user
@@ -373,12 +392,14 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 	thread->arch.priv_level = 1;
 
 	/*
-	 * Set the global flag now so that arch_is_user_context() returns
-	 * true immediately after vmrte, before the first trap0 fires.
-	 * z_hexagon_user_mode_sync() will keep it in sync on every
+	 * Set the global flags now so that arch_is_user_context() returns
+	 * true, and _hexagon_current_thread_user_visible already names this
+	 * thread, immediately after vmrte and before the first trap0 fires.
+	 * z_hexagon_user_mode_sync() will keep both in sync on every
 	 * subsequent kernel re-entry.
 	 */
 	_hexagon_user_mode_active = 1;
+	_hexagon_current_thread_user_visible = thread;
 
 	/*
 	 * H2 vmrte with GSSR.UM swaps r29 <-> GOSP.  To end up with

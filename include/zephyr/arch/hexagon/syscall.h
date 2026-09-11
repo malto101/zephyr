@@ -129,6 +129,21 @@ static inline bool arch_is_user_context(void)
 {
 	return _hexagon_user_mode_active != 0;
 }
+
+/*
+ * Mirrors _current, kept in sync alongside _hexagon_user_mode_active
+ * (arch/hexagon/core/user_mode_state.c) for the same reason: code that
+ * needs the current thread pointer but can't safely make a real function
+ * call to get it -- currently just hexagon_user_thread_exit() (a __naked
+ * function with no stack frame, used as the return address for a user
+ * thread whose entry function returns) -- reads this instead of
+ * _kernel.cpus[0].current, which hexagon_mmu_init() maps without U like
+ * any other ordinary kernel .bss. struct k_thread is forward-declared
+ * only (not defined) at this point in the include chain, but that's
+ * enough for a pointer declaration.
+ */
+struct k_thread;
+extern struct k_thread *_hexagon_current_thread_user_visible;
 #endif
 
 #ifdef __cplusplus
