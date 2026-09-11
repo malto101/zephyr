@@ -6,3 +6,13 @@ config TEST_EXTRA_STACK_SIZE
 
 config IDLE_STACK_SIZE
 	default 1024
+
+config PRIVILEGED_STACK_SIZE
+	# See arch/hexagon/core/userspace.c:arch_user_mode_enter() -- this
+	# sizes thread->arch.priv_stack, the dedicated kernel-side stack
+	# every K_USER thread uses for its own event/syscall handling.
+	# 1024 (the generic default) was empirically found too small for
+	# some syscalls' kernel-side C call depth (e.g. LOG_PRINTK's);
+	# 2048 was verified sufficient for everything hit so far, but is
+	# an empirical bound, not a proven one.
+	default 2048

@@ -13,10 +13,62 @@
 
 extern void z_hexagon_thread_start(void);
 
+#ifdef CONFIG_USERSPACE
+/**
+ * Wrapper entry for K_USER threads. z_thread_entry calls this as
+ * entry(p1, p2, p3), where args are unused.  We read the real entry
+ * and parameters from the thread's arch struct (saved in
+ * arch_new_thread) and drop into user mode.
+ */
+static void hexagon_user_thread_entry(void *p1, void *p2, void *p3)
+{
+	ARG_UNUSED(p1);
+	ARG_UNUSED(p2);
+	ARG_UNUSED(p3);
+
+	struct k_thread *thread = k_current_get();
+
+	k_thread_user_mode_enter(thread->arch.user_entry,
+				 thread->arch.user_p1,
+				 thread->arch.user_p2,
+				 thread->arch.user_p3);
+}
+#endif
+
 void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack, char *stack_ptr,
 		     k_thread_entry_t entry, void *p1, void *p2, void *p3)
 {
 	uintptr_t stack_end = ROUND_DOWN((uintptr_t)stack_ptr, ARCH_STACK_PTR_ALIGN);
+	k_thread_entry_t thread_entry = entry;
+
+#ifdef CONFIG_USERSPACE
+	/*
+	 * Reset unconditionally, not just under the K_USER branch below:
+	 * struct k_thread objects are reused (static thread arrays, pooled
+	 * dynamic threads), and z_hexagon_user_mode_sync() derives
+	 * arch_is_user_context()'s answer straight from this field. Leaving
+	 * a stale priv_level==1 from a thread's earlier life as a K_USER
+	 * thread would make a plain kernel thread now using the same object
+	 * appear to be running in user mode, routing its syscalls through
+	 * the trap0 path instead of calling z_impl_ directly.
+	 *
+	 * arch.trap0_active is reset for the same reason: it is also only
+	 * ever cleared by this thread's own normal completion, so a thread
+	 * aborted while its trap0_active was left set (see its own comment
+	 * in <zephyr/arch/hexagon/thread.h>) would otherwise pass that
+	 * stale true value on to whatever reuses this k_thread object.
+	 */
+	thread->arch.priv_level = 0;
+	thread->arch.trap0_active = 0;
+
+	if ((thread->base.user_options & K_USER) != 0) {
+		thread->arch.user_entry = entry;
+		thread->arch.user_p1 = p1;
+		thread->arch.user_p2 = p2;
+		thread->arch.user_p3 = p3;
+		thread_entry = hexagon_user_thread_entry;
+	}
+#endif
 
 	/*
 	 * Build a fake switch frame on the stack so that the first
@@ -37,7 +89,7 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack, char *sta
 	memset(frame, 0, SWITCH_FRAME_SIZE);
 
 	/* Callee-saved register slots: r16=entry, r17=p1, r18=p2, r19=p3 */
-	frame[SWITCH_R1716 / 4]     = (uint32_t)entry;  /* r16 */
+	frame[SWITCH_R1716 / 4]     = (uint32_t)thread_entry;  /* r16 */
 	frame[SWITCH_R1716 / 4 + 1] = (uint32_t)p1;     /* r17 */
 	frame[SWITCH_R1918 / 4]     = (uint32_t)p2;      /* r18 */
 	frame[SWITCH_R1918 / 4 + 1] = (uint32_t)p3;      /* r19 */

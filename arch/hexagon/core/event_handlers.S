@@ -52,6 +52,16 @@ GTEXT(z_hexagon_enhanced_interrupt)
 GTEXT(z_hexagon_event_handler)
 GTEXT(z_get_next_switch_handle)
 GTEXT(z_hexagon_arch_switch)
+#ifdef CONFIG_USERSPACE
+GTEXT(z_hexagon_event_exit_user_sync)
+#endif
+#ifdef CONFIG_HW_STACK_PROTECTION
+GTEXT(z_hexagon_event_exit_stack_protect)
+#endif
+#ifdef CONFIG_HEXAGON_HVX
+GTEXT(z_hexagon_event_exit_hvx_save)
+GTEXT(z_hexagon_event_exit_hvx_restore)
+#endif
 GDATA(_kernel)
 
 /* offsets.h will be generated and included during build */
@@ -170,7 +180,7 @@ GDATA(_kernel)
 	/* Check if we need to switch: if (r0 == 0) no switch */
 	{
 		p0 = cmp.eq(r0, #0)
-		if (p0.new) jump:t ##_event_restore_\event_id
+		if (p0.new) jump:t ##_event_no_switch_\event_id
 	}
 
 	/* Reload old thread pointer from scratch slot */
@@ -178,13 +188,62 @@ GDATA(_kernel)
 		r5 = memw(r29+#EVENT_CTX_SCRATCH)
 	}
 
+#ifdef CONFIG_HEXAGON_HVX
+	/* Save old thread's HVX state before the switch (r5 = old thread).
+	 * Must happen before z_hexagon_arch_switch clobbers the old context.
+	 */
+	{
+		r0 = r5
+		call ##z_hexagon_event_exit_hvx_save
+	}
+	/* Reload old thread pointer (r5 clobbered by call) */
+	{
+		r5 = memw(r29+#EVENT_CTX_SCRATCH)
+	}
+	/* Reload new switch_handle (r0 clobbered by call) */
+	{
+		r4 = ##_kernel
+	}
+	{
+		r4 = add(r4, #___kernel_t_cpus_OFFSET)
+	}
+	{
+		r4 = memw(r4+#___cpu_t_current_OFFSET)
+	}
+	{
+		r0 = memw(r4+#___thread_t_switch_handle_OFFSET)
+	}
+#endif
+
 	/* r0 = new thread's switch_handle, r5 = old thread pointer */
 	/* arch_switch needs &thread->switch_handle as second arg */
 	{
 		r1 = add(r5, #___thread_t_switch_handle_OFFSET)
 		call ##z_hexagon_arch_switch
 	}
+
+#ifdef CONFIG_HW_STACK_PROTECTION
+	/* Update FRAMELIMIT for the newly scheduled thread */
+	{
+		call ##z_hexagon_event_exit_stack_protect
+	}
+#endif
+#ifdef CONFIG_HEXAGON_HVX
+	/* Restore new thread's HVX context after the switch */
+	{
+		call ##z_hexagon_event_exit_hvx_restore
+	}
+#endif
+
+_event_no_switch_\event_id:
 #endif /* CONFIG_MULTITHREADING */
+
+#ifdef CONFIG_USERSPACE
+	/* Sync user-mode flag for the thread about to resume */
+	{
+		call ##z_hexagon_event_exit_user_sync
+	}
+#endif
 
 _event_restore_\event_id:
 	/* Restore r28 */

@@ -15,7 +15,7 @@
  *
  * The frame stores callee-saved registers (r16-r27), the frame
  * pointer and link register (r30, r31), and optionally the UGP
- * register for thread-local storage.
+ * register for thread-local storage and/or GOSP (G2) for userspace.
  */
 
 #define SWITCH_R1716     0x00
@@ -28,9 +28,27 @@
 
 #ifdef CONFIG_THREAD_LOCAL_STORAGE
 #define SWITCH_UGP       0x38
-#define SWITCH_FRAME_SIZE 0x40
+#define SWITCH_TAIL_SIZE 0x08
 #else
-#define SWITCH_FRAME_SIZE 0x38
+#define SWITCH_TAIL_SIZE 0x00
+#endif
+
+/*
+ * GOSP (G2) is real per-thread hardware state, not a general-purpose
+ * register: HVM swaps it with r29 on every user<->guest transition (see
+ * arch_user_mode_enter()), so at any given moment it holds "the other
+ * side's" stack pointer for whichever thread last entered/left user mode.
+ * It must be saved and restored across a context switch exactly like
+ * r16-r31 and UGP -- otherwise a switch taken from a nested interrupt
+ * mid-syscall (trap0 handling re-enables interrupts) leaves one thread's
+ * GOSP sitting in the register when a *different* thread's later vmrte
+ * reads it back, corrupting that thread's user stack pointer.
+ */
+#ifdef CONFIG_USERSPACE
+#define SWITCH_GOSP      (0x38 + SWITCH_TAIL_SIZE)
+#define SWITCH_FRAME_SIZE (0x38 + SWITCH_TAIL_SIZE + 0x08)
+#else
+#define SWITCH_FRAME_SIZE (0x38 + SWITCH_TAIL_SIZE)
 #endif
 
 #endif /* ZEPHYR_ARCH_HEXAGON_INCLUDE_SWITCH_FRAME_H_ */

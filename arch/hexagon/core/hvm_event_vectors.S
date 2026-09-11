@@ -207,7 +207,14 @@ SECTION_FUNC(TEXT, _setup_page_table)
 	r2 = asl(r2, #2)          /* PDE byte offset */
 	r0 = add(r5, r2)
 
-	r2 = #(__HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_X)
+	/*
+	 * U is set unconditionally: this single 4MB-superpage identity map
+	 * is the only mapping code, data and stacks ever get, so it must
+	 * already be readable/writable/executable from user mode for
+	 * CONFIG_USERSPACE. There is no separate supervisor-only region to
+	 * carve the K_MEM_PERM_USER split out of.
+	 */
+	r2 = #(__HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_X | __HVM_PTE_U)
 	r3 = #(__HEXAGON_C_WB_L2 << 6)
 	r2 = or(r2, r3)
 	r2 = or(r2, #__HVM_PDE_S_4MB)
