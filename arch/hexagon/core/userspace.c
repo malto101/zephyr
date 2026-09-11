@@ -445,6 +445,41 @@ FUNC_NORETURN void arch_syscall_oops(void *ssf)
 	CODE_UNREACHABLE;
 }
 
+/*
+ * z_impl_ for ARCH_EXCEPT(reason_p)'s hexagon_user_fault() syscall (see
+ * <zephyr/arch/hexagon/error.h>). Runs in kernel mode -- reached via
+ * trap0, unlike the z_hexagon_fatal_error() call a kernel-mode
+ * ARCH_EXCEPT() makes directly -- so _current->syscall_frame is the
+ * user thread's trapped context, exactly what the fatal error handler
+ * needs to report where the (real or forged) exception came from.
+ *
+ * A user thread may only legitimately raise K_ERR_STACK_CHK_FAIL through
+ * this path; every other reason (K_ERR_KERNEL_PANIC, K_ERR_KERNEL_OOPS
+ * with a made-up ssf, an out-of-range enum value, ...) is a forgery and
+ * must be downgraded to K_ERR_KERNEL_OOPS so it only takes down the
+ * offending thread. Mirrors RISC-V's z_impl_user_fault().
+ */
+void z_impl_hexagon_user_fault(unsigned int reason)
+{
+	struct k_thread *thread = k_current_get();
+	struct arch_esf *oops_esf = thread->syscall_frame;
+
+	if (((thread->base.user_options & K_USER) != 0) &&
+	    reason != K_ERR_STACK_CHK_FAIL) {
+		reason = K_ERR_KERNEL_OOPS;
+	}
+
+	z_fatal_error(reason, oops_esf);
+	CODE_UNREACHABLE;
+}
+
+static inline void z_vrfy_hexagon_user_fault(unsigned int reason)
+{
+	z_impl_hexagon_user_fault(reason);
+}
+
+#include <zephyr/syscalls/hexagon_user_fault_mrsh.c>
+
 int arch_mem_domain_max_partitions_get(void)
 {
 	return CONFIG_MAX_DOMAIN_PARTITIONS;

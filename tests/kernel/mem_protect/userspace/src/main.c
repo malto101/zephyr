@@ -37,6 +37,10 @@
 extern void arm_core_mpu_disable(void);
 #endif
 
+#if defined(CONFIG_HEXAGON)
+#include <hexagon_vm.h>
+#endif
+
 #define INFO(fmt, ...) printk(fmt, ##__VA_ARGS__)
 #define PIPE_LEN 1
 #define BYTES_TO_READ_WRITE 1
@@ -247,6 +251,20 @@ ZTEST_USER(userspace, test_userspace_write_control)
 	set_fault(K_ERR_CPU_EXCEPTION);
 
 	__asm__ volatile("rsr.ps %0" : "=r" (ps));
+#elif defined(CONFIG_HEXAGON)
+	unsigned int val = 0;
+
+	set_fault(K_ERR_CPU_EXCEPTION);
+
+	/*
+	 * G-registers (GELR/GSR/GOSP/GBADVA) are guest-privileged state:
+	 * direct-move writes to them from guest-user mode (GSR.UM=1) are a
+	 * privilege violation, delivered as a general exception to this
+	 * guest's own event vector -- same path as any other fault here.
+	 */
+	__asm__ volatile("gsr = %0" : : "r" (val));
+
+	zassert_unreachable("Write to control register did not fault");
 #else
 #error "Not implemented for this architecture"
 	zassert_unreachable("Write to control register did not fault");
@@ -361,6 +379,17 @@ ZTEST_USER(userspace, test_userspace_disable_mmu_mpu)
 		__asm__ volatile("wptlb %0, %1\n\t" : : "a"(i), "a"(0));
 	}
 #endif
+
+#elif defined(CONFIG_HEXAGON)
+	set_fault(K_ERR_CPU_EXCEPTION);
+
+	/*
+	 * vmclrmap (like every vmXXX hypercall) is issued via trap1, itself
+	 * guest-privileged: attempting it from guest-user mode (GSR.UM=1)
+	 * is a privilege violation and never reaches H2, let alone actually
+	 * invalidating any mapping.
+	 */
+	(void)hexagon_vm_clrmap(NULL, 0);
 
 #else
 #error "Not implemented for this architecture"
@@ -588,6 +617,18 @@ ZTEST_USER(userspace, test_userspace_read_priv_stack)
 #elif defined(CONFIG_ARM) || defined(CONFIG_X86) || defined(CONFIG_RISCV) || \
 	defined(CONFIG_ARM64) || defined(CONFIG_XTENSA)
 	/* priv_stack_ptr set by test_main() */
+#elif defined(CONFIG_HEXAGON)
+	/*
+	 * Unlike the other architectures, Hexagon's privileged stack is not
+	 * carved out of the (exported) ztest_thread_stack buffer -- it is a
+	 * fixed-size array inside struct _thread_arch, i.e. part of the
+	 * k_thread struct itself. userspace_setup() has no way to reach it
+	 * (ztest_thread, unlike ztest_thread_stack, is not exported), so
+	 * compute it here instead, the same way CONFIG_ARC does above: at
+	 * the point this runs, _current is the very thread whose privileged
+	 * stack is under test.
+	 */
+	priv_stack_ptr = (char *)_current->arch.priv_stack;
 #else
 #error "Not implemented for this architecture"
 #endif
@@ -628,6 +669,9 @@ ZTEST_USER(userspace, test_userspace_write_priv_stack)
 #elif defined(CONFIG_ARM) || defined(CONFIG_X86) || defined(CONFIG_RISCV) || \
 	defined(CONFIG_ARM64) || defined(CONFIG_XTENSA)
 	/* priv_stack_ptr set by test_main() */
+#elif defined(CONFIG_HEXAGON)
+	/* See test_userspace_read_priv_stack() above. */
+	priv_stack_ptr = (char *)_current->arch.priv_stack;
 #else
 #error "Not implemented for this architecture"
 #endif

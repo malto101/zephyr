@@ -6,6 +6,17 @@ add_subdirectory(core)
 # Add hexagon-specific include directory
 zephyr_include_directories(include)
 
+# Register the __syscall declaration in error.h (ARCH_EXCEPT's
+# hexagon_user_fault()) for syscall generation. Without this, gen_syscalls.py
+# discovers it via the unconditional --scan of include/ (so it gets an entry
+# in syscall_list.h) but never emits its _mrsh.c, since --scan alone doesn't
+# mark a header for emission -- only --include (via this call) or a header
+# actually reached by another --include'd source's dependency scan does.
+# RISC-V's and XTENSA's CMakeLists.txt register their own error/arch
+# header for the identical reason (arch/riscv/CMakeLists.txt,
+# arch/xtensa/CMakeLists.txt).
+zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/arch/hexagon/error.h)
+
 set_property(GLOBAL PROPERTY PROPERTY_OUTPUT_FORMAT elf32-littlehexagon)
 
 # Hexagon clang does not support -mno-global-merge; clear the property
