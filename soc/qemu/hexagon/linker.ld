@@ -23,6 +23,29 @@
 #endif
 
 /*
+ * Alignment for the ROM (text+rodata, R+X) / RAM (data+bss+stacks, R+W)
+ * split that arch/hexagon/core/mem_manage.c's hexagon_mmu_init() builds at
+ * boot. Deliberately its own macro, not MMU_PAGE_ALIGN: that follows
+ * CONFIG_MMU_PAGE_SIZE (4KB), which is needed elsewhere (e.g. kobject-data
+ * placement must land on a real page boundary regardless of this split),
+ * but a single H2 second-level page table always uses one page size for
+ * all of its entries across the whole 4MB PGD entry it covers (see the
+ * HVM spec, S9.4) -- typical images here are well under 4MB, so ROM and
+ * RAM share one such table, and 4KB granularity across it means a TLB
+ * fill per 4KB of code or data ever touched. Under heavy host CPU
+ * contention (e.g. many qemu-system-hexagon instances running at once in
+ * a test sweep) that additional trap-and-refill overhead was enough to
+ * make some larger images time out that ran fine standalone: this same
+ * split at 4KB granularity reliably reproduced hangs, at 64KB it did not.
+ * 64KB (S=010, the coarsest granularity below the 4MB direct-mapping
+ * threshold) cuts the worst case to under 64 fills for anything that fits
+ * in one 4MB chunk, at the cost of up to ~64KB of unmapped padding
+ * between the true end of .rodata and the true start of .data -- trivial
+ * next to this board's 16MB of RAM.
+ */
+#define HEXAGON_ROM_RAM_ALIGN . = ALIGN(0x10000);
+
+/*
  * The hexagon toolchain unconditionally injects picolibc.ld into the
  * link command. To prevent picolibc's sections from overlapping with
  * ours, we leave __flash/__ram at picolibc's defaults (0x100000/0x500000)
@@ -53,7 +76,17 @@ SECTIONS
     }
 
     GROUP_START(ROMABLE_REGION)
-    __rom_region_start = .;
+    /*
+     * Not "__rom_region_start = .;": GROUP_START() is a no-op (only
+     * GROUP_LINK_IN's "> REGION" actually anchors the location counter
+     * to a memory region), and the .plt/.iplt sections above have no
+     * region placement of their own, so "." here is still wherever the
+     * default (unplaced) location counter starts -- 0, not this
+     * region's origin. Assign the known origin explicitly instead,
+     * matching how riscv's linker.ld sets __rom_region_start = ROM_BASE
+     * for the same reason.
+     */
+    __rom_region_start = DT_REG_ADDR(DT_CHOSEN(zephyr_sram));
 
     /* Reset vector must be at the beginning */
     SECTION_PROLOGUE(.reset.__start,,)
@@ -114,8 +147,8 @@ SECTIONS
 
 #ifdef CONFIG_USERSPACE
     /* Application shared memory must come first for userspace */
-#define SMEM_PARTITION_ALIGN(size) MMU_PAGE_ALIGN
-#define APP_SHARED_ALIGN MMU_PAGE_ALIGN
+#define SMEM_PARTITION_ALIGN(size) HEXAGON_ROM_RAM_ALIGN
+#define APP_SHARED_ALIGN HEXAGON_ROM_RAM_ALIGN
 
 #include <app_smem.ld>
 
@@ -142,8 +175,10 @@ SECTIONS
      */
     SECTION_DATA_PROLOGUE(_DATA_SECTION_NAME,,)
     {
+#ifdef CONFIG_USERSPACE
         MMU_PAGE_ALIGN
-#ifndef CONFIG_USERSPACE
+#else
+        HEXAGON_ROM_RAM_ALIGN
         _image_ram_start = .;
         z_mapped_start = .;
 #endif
