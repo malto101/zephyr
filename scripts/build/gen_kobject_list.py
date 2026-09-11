@@ -345,6 +345,27 @@ class ConstType:
         return type_env[self.child_type].get_kobjects(addr)
 
 
+class TypedefType:
+    def __init__(self, child_type):
+        self.child_type = child_type
+
+    def __repr__(self):
+        return f"<typedef {self.child_type}>"
+
+    @property
+    def size(self):
+        return type_env[self.child_type].size
+
+    def has_kobject(self):
+        if self.child_type not in type_env:
+            return False
+
+        return type_env[self.child_type].has_kobject()
+
+    def get_kobjects(self, addr):
+        return type_env[self.child_type].get_kobjects(addr)
+
+
 class AggregateType:
     def __init__(self, offset, name, size):
         self.name = name
@@ -518,10 +539,23 @@ def analyze_die_array(die):
 def analyze_typedef(die):
     type_offset = die_get_type_offset(die)
 
-    if type_offset not in type_env:
+    if type_offset is None:
         return
 
-    type_env[die.offset] = type_env[type_offset]
+    # Deliberately not "if type_offset not in type_env: return" followed by
+    # an eager "type_env[die.offset] = type_env[type_offset]": DIEs are
+    # visited in whatever order they appear in the compilation unit, not in
+    # dependency order, and a typedef of an anonymously-declared struct
+    # ("typedef struct { ... } foo_t;") can be emitted before that struct's
+    # own DW_TAG_structure_type DIE -- observed with clang/LLVM's DWARF
+    # output (offset of the typedef DIE lower than its target struct's),
+    # though not with every compiler. An eager copy made at that point would
+    # permanently miss the struct's kernel-object members, since nothing
+    # ever revisits this typedef once the struct is analyzed later in the
+    # same pass. TypedefType resolves type_offset from type_env lazily, at
+    # has_kobject()/get_kobjects() call time (well after every DIE has been
+    # visited), the same way ConstType and ArrayType already do.
+    type_env[die.offset] = TypedefType(type_offset)
 
 
 def decode_uleb128(data, idx):
