@@ -46,18 +46,22 @@
  * CONFIG_USERSPACE's kernel/user RAM split (again, see
  * hexagon_mmu_init()) now maps them non-U like any other kernel .bss --
  * user-mode code can no longer overwrite its own page tables directly.
- * What's still missing is *dynamic* per-domain/per-thread permission
- * changes: arch_mem_domain_partition_add/remove() and
- * arch_mem_domain_thread_add/remove() (userspace.c) remain no-ops, so
- * every app-shared-memory partition and every thread's stack is
- * uniformly U-accessible to any user thread regardless of actual domain
- * membership, rather than genuinely gated by it.
+ * arch_mem_domain_partition_add/remove() and
+ * arch_mem_domain_thread_add/remove() (userspace.c) still remain no-ops,
+ * but app-shared-memory partitions are genuinely gated by domain
+ * membership: hexagon_mmu_sync_domain_access() below re-derives the
+ * granted set from the resuming thread's own domain on every entry to
+ * and resumption of user mode. A thread's own stack has no equivalent
+ * per-domain gating and stays uniformly U-accessible once granted; see
+ * hexagon_mmu_grant_user_stack()'s own comment for why that is an
+ * accepted, narrower trade-off.
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/linker/linker-defs.h>
 #include <zephyr/arch/hexagon/syscall.h>
+#include <kernel_internal.h>
 #include <hexagon_vm.h>
 
 #ifdef CONFIG_USERSPACE
@@ -261,15 +265,18 @@ void hexagon_mmu_init(void)
 	 * *after* mapping the kernel-RAM range below would reopen that
 	 * whole page, not just the flag.
 	 *
-	 * This is not real per-domain/per-thread isolation: every app-
-	 * shared-memory partition from every source file is uniformly
-	 * U-accessible to any user thread, and every user thread's stack is
-	 * accessible to any other, regardless of which memory domain either
-	 * is actually in -- that needs dynamic per-page-table updates from
-	 * arch_mem_domain_partition_add/remove() and
-	 * arch_mem_domain_thread_add/remove() (currently no-ops) and is not
-	 * attempted here. What this does fix is ordinary kernel state that
-	 * was never meant to be user-accessible in the first place.
+	 * Every user thread's stack is accessible to any other regardless of
+	 * memory domain, via the boot-time blanket grant below -- real
+	 * per-thread stack isolation would need the same kind of dynamic,
+	 * per-thread page-table update hexagon_mmu_grant_user_stack() already
+	 * does for a stack outside this range entirely (dynamically
+	 * allocated ones), generalized and made revocable. Not attempted
+	 * here. Application shared memory (_app_smem), by contrast, *is*
+	 * given real per-domain isolation below: boot with none of it
+	 * U-accessible, and let hexagon_mmu_sync_domain_access() (called
+	 * from arch_user_mode_enter() on every entry to user mode, same as
+	 * the stack grant) grant exactly the partitions the thread about to
+	 * run is actually a member of.
 	 */
 	uintptr_t smem_start = (uintptr_t)_app_smem_start;
 	uintptr_t smem_end = (uintptr_t)_app_smem_end;
@@ -282,9 +289,14 @@ void hexagon_mmu_init(void)
 		 "app shared memory 0x%lx does not start at rom_end 0x%lx",
 		 (unsigned long)smem_start, (unsigned long)rom_end);
 
-	/* Application shared memory (K_APP_BMEM/K_APP_DMEM): R+W+U. */
+	/*
+	 * Application shared memory (K_APP_BMEM/K_APP_DMEM): R+W, no U at
+	 * boot. hexagon_mmu_sync_domain_access() grants U back per-partition
+	 * before any user code could run (the very first arch_user_mode_enter()
+	 * call, which necessarily precedes it).
+	 */
 	hexagon_l2_map_range(smem_start, smem_end,
-			     __HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_U, __HEXAGON_C_WB_L2);
+			     __HVM_PTE_R | __HVM_PTE_W, __HEXAGON_C_WB_L2);
 
 	/* Ordinary kernel .data/.tdata/.tbss/.bss/.noinit: R+W, no U. */
 	hexagon_l2_map_range(smem_end, ur_start,
@@ -372,10 +384,11 @@ void hexagon_mmu_init(void)
  * user stack it stays U-accessible even after that thread exits and the
  * page is freed and reused for something else -- the same
  * already-permanent-U model .user_stacks itself has, not a new weaker
- * guarantee. Real revocation needs the same dynamic per-domain/
- * per-thread MMU project already deferred for
- * arch_mem_domain_partition_remove()/arch_mem_domain_thread_remove()
- * (userspace.c).
+ * guarantee. Real per-thread revocation of a *stack* specifically is not
+ * attempted -- unlike app-shared-memory partitions (see
+ * hexagon_mmu_sync_domain_access() below), a thread's own stack is never
+ * meant to become inaccessible to it while it still runs, so there is no
+ * test or real use case pushing on this the way there was for domains.
  */
 void hexagon_mmu_grant_user_stack(uintptr_t start, size_t size)
 {
@@ -394,6 +407,77 @@ void hexagon_mmu_grant_user_stack(uintptr_t start, size_t size)
 	hexagon_vm_cache(hvmc_dccleaninva, (uint32_t)(uintptr_t)hexagon_l2,
 			 (uint32_t)sizeof(hexagon_l2));
 	hexagon_vm_clrmap((void *)page_start, page_end - page_start);
+}
+
+/*
+ * Re-sync application-shared-memory (K_APP_BMEM/K_APP_DMEM) U access to
+ * exactly the partitions the given thread's memory domain actually
+ * contains: real per-domain isolation for direct (non-syscall) user-mode
+ * memory access, matching what arch_buffer_validate() above already does
+ * in software for syscall-mediated access. Called from
+ * arch_user_mode_enter() on every entry to user mode, same as
+ * hexagon_mmu_grant_user_stack() -- and from z_hexagon_user_mode_sync()
+ * (user_mode_state.c) whenever an ordinary preemptive switch resumes a
+ * different, already-user-mode thread, since that path never goes back
+ * through arch_user_mode_enter(). Without the second call site, the
+ * shared page table kept whichever thread's grants were synced last, so
+ * a switch between two K_USER threads in different domains left the
+ * previous thread's grants live for the next one -- there being only
+ * ever one thread actually *executing* in user mode at a time (see the
+ * CONFIG_SMP BUILD_ASSERT in user_mode_state.c) says nothing about how
+ * many take turns doing so.
+ *
+ * Deny-by-default full resync on every call, not incremental add/remove
+ * tracking: arch_mem_domain_partition_add/remove() and
+ * arch_mem_domain_thread_add/remove() (userspace.c) stay no-ops, and
+ * there is no per-domain or per-thread state to keep consistent between
+ * calls. Held under z_mem_domain_lock, the same lock
+ * k_mem_domain_add_partition()/remove_partition() mutate partitions[]
+ * under, since trap0 handling re-enables guest interrupts and a timer
+ * tick can preempt this scan mid-loop.
+ *
+ * Each K_APP_BMEM/K_APP_DMEM partition is already its own whole number
+ * of L2 pages (SMEM_PARTITION_ALIGN in soc/qemu/hexagon/linker.ld pads
+ * every partition to HEXAGON_ROM_RAM_ALIGN at both ends, same as
+ * _app_smem itself), so granting one partition never touches any page
+ * belonging to another -- unlike hexagon_mmu_grant_user_stack()'s
+ * necessarily coarser, whatever-else-shares-the-page trade-off.
+ */
+void hexagon_mmu_sync_domain_access(struct k_thread *thread)
+{
+	k_spinlock_key_t key = k_spin_lock(&z_mem_domain_lock);
+	struct k_mem_domain *domain = thread->mem_domain_info.mem_domain;
+	int remaining = domain != NULL ? domain->num_partitions : 0;
+
+	/* Deny by default. */
+	hexagon_l2_map_range((uintptr_t)_app_smem_start, (uintptr_t)_app_smem_end,
+			     __HVM_PTE_R | __HVM_PTE_W, __HEXAGON_C_WB_L2);
+
+	/* Grant back exactly this thread's domain's partitions. */
+	for (int i = 0; remaining > 0 && i < CONFIG_MAX_DOMAIN_PARTITIONS; i++) {
+		const struct k_mem_partition *part = &domain->partitions[i];
+		uint32_t perm;
+
+		if (part->size == 0) {
+			continue; /* Unused hole left behind by a removed partition. */
+		}
+		remaining--;
+
+		perm = __HVM_PTE_R | __HVM_PTE_U;
+		if (K_MEM_PARTITION_IS_WRITABLE(part->attr)) {
+			perm |= __HVM_PTE_W;
+		}
+
+		hexagon_l2_map_range(part->start, part->start + part->size, perm,
+				     __HEXAGON_C_WB_L2);
+	}
+
+	hexagon_vm_cache(hvmc_dccleaninva, (uint32_t)(uintptr_t)hexagon_l2,
+			 (uint32_t)sizeof(hexagon_l2));
+	hexagon_vm_clrmap(_app_smem_start,
+			 (uintptr_t)_app_smem_end - (uintptr_t)_app_smem_start);
+
+	k_spin_unlock(&z_mem_domain_lock, key);
 }
 #endif /* CONFIG_USERSPACE */
 

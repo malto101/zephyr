@@ -18,8 +18,9 @@
 
 #ifdef CONFIG_USERSPACE
 
-/* mem_manage.c; see its definition for the full rationale. */
+/* mem_manage.c; see their definitions for the full rationale. */
 extern void hexagon_mmu_grant_user_stack(uintptr_t start, size_t size);
+extern void hexagon_mmu_sync_domain_access(struct k_thread *thread);
 
 int arch_buffer_validate(const void *addr, size_t size, int write)
 {
@@ -256,6 +257,17 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 	 * once.
 	 */
 	hexagon_mmu_grant_user_stack(thread->stack_info.start, thread->stack_info.size);
+
+	/*
+	 * Give this thread's actual memory domain real effect for direct
+	 * (non-syscall) user-mode access: grant exactly the app-shared-memory
+	 * partitions it currently contains, denying everything else. See
+	 * hexagon_mmu_sync_domain_access() for why re-syncing on every entry
+	 * to user mode, rather than incrementally in
+	 * arch_mem_domain_partition_add/remove()/thread_add/remove() below,
+	 * is correct here.
+	 */
+	hexagon_mmu_sync_domain_access(thread);
 
 	/*
 	 * Save a kernel SP as GOSP.  When H2 delivers an event from user
@@ -512,6 +524,16 @@ int arch_mem_domain_init(struct k_mem_domain *domain)
 	return 0;
 }
 
+/*
+ * No-ops, deliberately: hexagon_mmu_sync_domain_access() (mem_manage.c),
+ * called from arch_user_mode_enter() on every entry to user mode, always
+ * does a full deny-then-grant resync against the about-to-run thread's
+ * *current* domain state, so there is nothing to do incrementally here.
+ * This only works because at most one thread is ever actually executing
+ * in user mode at a time on this arch -- see hexagon_mmu_sync_domain_access()'s
+ * own comment for what a true multi-domain-resident design would need
+ * these hooks to do instead.
+ */
 int arch_mem_domain_partition_add(struct k_mem_domain *domain, uint32_t partition_id)
 {
 	ARG_UNUSED(domain);

@@ -21,6 +21,14 @@
  *  - There is at most one user-mode thread active at a time (true today).
  *  - The clear/restore happens atomically with the mode switch (true
  *    because guest interrupts are disabled during event handling).
+ *
+ * z_hexagon_user_mode_sync() also re-syncs the shared page table's
+ * per-domain app-shared-memory grants (hexagon_mmu_sync_domain_access(),
+ * mem_manage.c) whenever the thread resuming here differs from the one
+ * last synced: arch_user_mode_enter() only does that sync for its own
+ * caller, so an ordinary preemptive switch directly into a different,
+ * already-user-mode thread would otherwise resume it under the previous
+ * thread's stale domain grants.
  */
 
 #include <zephyr/kernel.h>
@@ -28,6 +36,9 @@
 #include <zephyr/linker/section_tags.h>
 
 #ifdef CONFIG_USERSPACE
+
+/* mem_manage.c */
+extern void hexagon_mmu_sync_domain_access(struct k_thread *thread);
 
 BUILD_ASSERT(!IS_ENABLED(CONFIG_SMP),
 	     "Hexagon user mode state uses a global flag: SMP is not supported");
@@ -72,8 +83,16 @@ struct k_thread *_hexagon_current_thread_user_visible Z_GENERIC_SECTION(.hex_use
  */
 void z_hexagon_user_mode_sync(void)
 {
+	/* Last thread hexagon_mmu_sync_domain_access() was synced for. */
+	static struct k_thread *domain_synced_thread;
+
 	_hexagon_user_mode_active = (_current->arch.priv_level != 0) ? 1U : 0U;
 	_hexagon_current_thread_user_visible = _current;
+
+	if (_hexagon_user_mode_active && _current != domain_synced_thread) {
+		hexagon_mmu_sync_domain_access(_current);
+		domain_synced_thread = _current;
+	}
 }
 
 #endif /* CONFIG_USERSPACE */
