@@ -29,8 +29,25 @@ tests:
     extra_args: FORKS=STACKS
   sample.kernel.philosopher.fifos:
     extra_args: FORKS=FIFOS
+    # k_fifo_put()/k_fifo_get() call k_queue_append()/k_queue_get()
+    # directly, not through a syscall (they pass raw, unchecked
+    # pointers, so Zephyr never made them one) -- calling them from a
+    # real K_USER thread reaches k_spin_lock() -> arch_irq_lock()
+    # unprivileged, which faults with HVM cause 0x1b on Hexagon
+    # (arch_irq_lock() is hexagon_vm_setie(), a guest-privileged trap1
+    # call). This is not Hexagon-specific: the same call from user mode
+    # would be just as unsafe on any architecture, but only Hexagon's
+    # board forces CONFIG_USERSPACE=y (and thus K_USER) on by default,
+    # so this port is the first to actually exercise it.
+    platform_exclude:
+      - qemu_hexagon
   sample.kernel.philosopher.lifos:
     extra_args: FORKS=LIFOS
+    # Same reason as sample.kernel.philosopher.fifos above:
+    # k_lifo_put()/k_lifo_get() are the same non-syscall
+    # k_queue_append()/k_queue_get() calls under a different name.
+    platform_exclude:
+      - qemu_hexagon
   sample.kernel.philosopher.preempt_only:
     extra_configs:
       - CONFIG_NUM_PREEMPT_PRIORITIES=6
