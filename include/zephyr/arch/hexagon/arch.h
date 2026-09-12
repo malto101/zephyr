@@ -26,6 +26,10 @@
 #include <irq_connect.h>
 #include <zephyr/sw_isr_table.h>
 
+#if defined(CONFIG_GDBSTUB)
+#include <zephyr/arch/hexagon/gdbstub.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

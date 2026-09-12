@@ -24,6 +24,7 @@ testing:
     - cbprintf
     - cmsis_rtos
     - coredump
+    - gdbstub
     - heap
     - introduction
     - log_api

@@ -51,9 +51,28 @@ void z_hexagon_event_handler(unsigned int event_num, struct event_context *ctx)
 	 * return key=1 (IE was enabled) so that subsequent z_swap()
 	 * calls pass the SPIN_VALIDATE assertion.  Nested interrupts
 	 * are safe because EVENT_ENTRY saves all volatile state.
+	 *
+	 * A GDB software breakpoint (trap0(#0xdb)) is the one trap0 this
+	 * must not apply to: it can fire long before the scheduler is up
+	 * (e.g. CONFIG_GDBSTUB_ENTER_IMMEDIATELY's PRE_KERNEL_2 init call),
+	 * and z_hexagon_gdb_entry() then blocks for an arbitrarily long
+	 * time waiting on the debugger. Re-enabling IE here would let a
+	 * nested timer interrupt preempt that wait and run EVENT_EXIT's
+	 * z_get_next_switch_handle() that early, long before
+	 * kernel.cpus[0].current or the scheduler state it reads exist.
 	 */
 	if (event_num == HEXAGON_EVENT_TRAP0) {
+#ifdef CONFIG_GDBSTUB
+		uint32_t trap_pc = ctx->gelr - 4;
+		bool is_gdb_breakpoint = (trap_pc != 0U) && ((trap_pc & 3U) == 0U) &&
+					 (*(uint32_t *)trap_pc == HEXAGON_BREAK_INSN);
+
+		if (!is_gdb_breakpoint) {
+			hexagon_vm_setie(VM_INT_ENABLE);
+		}
+#else
 		hexagon_vm_setie(VM_INT_ENABLE);
+#endif
 #ifdef CONFIG_USERSPACE
 		/*
 		 * Mark this thread's own trap0 handling in flight so a
@@ -157,87 +176,6 @@ void z_hexagon_event_exit_user_sync(void)
 }
 #endif
 
-#ifdef CONFIG_GDBSTUB
-/*
- * Save callee-saved GPRs (r16-r28) and the special registers EVENT_ENTRY
- * does not save, hand off to the GDB stub, then restore them (in case
- * GDB modified them). Shared by the general-exception and trap0 software-
- * breakpoint paths below: both reach a breakpoint the same way and need
- * the same extra register set live for z_hexagon_gdb_entry() to present
- * the full register file to GDB.
- */
-static void hexagon_gdb_breakpoint_entry(struct event_context *ctx)
-{
-	/* Save callee-saved GPRs */
-	__asm__ volatile(
-		"memd(%0+#%1) = r17:16\n"
-		"memd(%0+#%2) = r19:18\n"
-		"memd(%0+#%3) = r21:20\n"
-		"memd(%0+#%4) = r23:22\n"
-		"memd(%0+#%5) = r25:24\n"
-		"memd(%0+#%6) = r27:26\n"
-		"memw(%0+#%7) = r28\n"
-		:
-		: "r"(_gdb_callee_regs),
-		  "i"(GDB_CALLEE_R16_OFF), "i"(GDB_CALLEE_R18_OFF),
-		  "i"(GDB_CALLEE_R20_OFF), "i"(GDB_CALLEE_R22_OFF),
-		  "i"(GDB_CALLEE_R24_OFF), "i"(GDB_CALLEE_R26_OFF),
-		  "i"(GDB_CALLEE_R28_OFF)
-		: "memory");
-	/* Save special registers */
-	__asm__ volatile(
-		"{ r0 = usr }\n memw(%0+#%1) = r0\n"
-		"{ r0 = gp }\n  memw(%0+#%2) = r0\n"
-		"{ r0 = ugp }\n memw(%0+#%3) = r0\n"
-		"{ r0 = lc0 }\n memw(%0+#%4) = r0\n"
-		"{ r0 = lc1 }\n memw(%0+#%5) = r0\n"
-		"{ r0 = sa0 }\n memw(%0+#%6) = r0\n"
-		"{ r0 = sa1 }\n memw(%0+#%7) = r0\n"
-		:
-		: "r"(_gdb_callee_regs),
-		  "i"(GDB_CALLEE_USR_OFF), "i"(GDB_CALLEE_GP_OFF),
-		  "i"(GDB_CALLEE_UGP_OFF), "i"(GDB_CALLEE_LC0_OFF),
-		  "i"(GDB_CALLEE_LC1_OFF), "i"(GDB_CALLEE_SA0_OFF),
-		  "i"(GDB_CALLEE_SA1_OFF)
-		: "r0", "memory");
-
-	z_hexagon_gdb_entry(ctx);
-
-	/* Restore callee-saved GPRs (in case GDB modified them) */
-	__asm__ volatile(
-		"r17:16 = memd(%0+#%1)\n"
-		"r19:18 = memd(%0+#%2)\n"
-		"r21:20 = memd(%0+#%3)\n"
-		"r23:22 = memd(%0+#%4)\n"
-		"r25:24 = memd(%0+#%5)\n"
-		"r27:26 = memd(%0+#%6)\n"
-		"r28 = memw(%0+#%7)\n"
-		:
-		: "r"(_gdb_callee_regs),
-		  "i"(GDB_CALLEE_R16_OFF), "i"(GDB_CALLEE_R18_OFF),
-		  "i"(GDB_CALLEE_R20_OFF), "i"(GDB_CALLEE_R22_OFF),
-		  "i"(GDB_CALLEE_R24_OFF), "i"(GDB_CALLEE_R26_OFF),
-		  "i"(GDB_CALLEE_R28_OFF)
-		: "memory");
-	/* Restore special registers */
-	__asm__ volatile(
-		"r0 = memw(%0+#%1)\n usr = r0\n"
-		"r0 = memw(%0+#%2)\n gp = r0\n"
-		"r0 = memw(%0+#%3)\n ugp = r0\n"
-		"r0 = memw(%0+#%4)\n lc0 = r0\n"
-		"r0 = memw(%0+#%5)\n lc1 = r0\n"
-		"r0 = memw(%0+#%6)\n sa0 = r0\n"
-		"r0 = memw(%0+#%7)\n sa1 = r0\n"
-		:
-		: "r"(_gdb_callee_regs),
-		  "i"(GDB_CALLEE_USR_OFF), "i"(GDB_CALLEE_GP_OFF),
-		  "i"(GDB_CALLEE_UGP_OFF), "i"(GDB_CALLEE_LC0_OFF),
-		  "i"(GDB_CALLEE_LC1_OFF), "i"(GDB_CALLEE_SA0_OFF),
-		  "i"(GDB_CALLEE_SA1_OFF)
-		: "r0", "memory");
-}
-#endif /* CONFIG_GDBSTUB */
-
 /* Handle general exceptions */
 #define GSR_CAUSE_MASK 0xFF
 
@@ -255,15 +193,10 @@ static void z_hexagon_exception_handler(struct event_context *ctx)
 	 * or a fault before the first instruction) before dereferencing.
 	 * Hexagon instructions are always 4-byte aligned; a non-aligned PC
 	 * cannot be a valid breakpoint.
-	 *
-	 * When called from the general exception path (EVENT_ENTRY),
-	 * callee-saved registers (r16-r28) are NOT saved by the assembly
-	 * stub.  hexagon_gdb_breakpoint_entry() saves them so
-	 * z_hexagon_gdb_entry() can present the full register file to GDB.
 	 */
 	if ((pc != 0U) && ((pc & 3U) == 0U) &&
 	    *(uint32_t *)pc == HEXAGON_BREAK_INSN) {
-		hexagon_gdb_breakpoint_entry(ctx);
+		z_hexagon_gdb_entry(ctx);
 		return;
 	}
 #endif
@@ -298,7 +231,7 @@ static void z_hexagon_trap0_handler(struct event_context *ctx)
 			 */
 			ctx->gelr = trap_pc;
 
-			hexagon_gdb_breakpoint_entry(ctx);
+			z_hexagon_gdb_entry(ctx);
 			return;
 		}
 	}
