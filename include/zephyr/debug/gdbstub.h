@@ -110,4 +110,15 @@ bool gdb_mem_can_read(const uintptr_t addr, const size_t len, uint8_t *align);
  */
 bool gdb_mem_can_write(const uintptr_t addr, const size_t len, uint8_t *align);
 
+/**
+ * @brief Provide register description for LLDB qRegisterInfo queries.
+ *
+ * @param reg_num Register number (0-based)
+ * @param buf     Buffer to write the response string into
+ * @param buflen  Size of the buffer
+ *
+ * @return Length of the response string, or 0 if reg_num is out of range.
+ */
+size_t arch_gdb_register_info(uint32_t reg_num, uint8_t *buf, size_t buflen);
+
 #endif

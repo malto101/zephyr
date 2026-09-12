@@ -184,6 +184,29 @@ void arch_gdb_post_memory_write(uintptr_t addr, size_t len, uint8_t align)
 }
 
 /**
+ * @brief Provide register info for LLDB's qRegisterInfo query.
+ *
+ * Architecture-specific implementations should fill buf with a response
+ * string like: "name:r0;bitsize:32;offset:0;encoding:uint;format:hex;
+ * set:General Purpose Registers;gcc:0;dwarf:0;"
+ *
+ * @param reg_num Register number
+ * @param buf     Output buffer for the response string
+ * @param buflen  Size of the output buffer
+ *
+ * @return Length of the response string, or 0 if reg_num is invalid
+ *         (signals end of register list to LLDB via E45 response).
+ */
+__weak
+size_t arch_gdb_register_info(uint32_t reg_num, uint8_t *buf, size_t buflen)
+{
+	ARG_UNUSED(reg_num);
+	ARG_UNUSED(buf);
+	ARG_UNUSED(buflen);
+	return 0;
+}
+
+/**
  * Add preamble and termination to the given data.
  *
  * It returns 0 if the packet was acknowledge, -1 otherwise.
@@ -612,7 +635,42 @@ static bool gdb_qsupported(uint8_t *buf, size_t len, enum gdb_loop_state *next_s
 
 static void gdb_q_packet(uint8_t *buf, size_t len, enum gdb_loop_state *next_state)
 {
+	const char *pkt = (const char *)buf;
+
 	if (gdb_qsupported(buf, len, next_state)) {
+		return;
+	}
+
+	/* Thread enumeration (LLDB requires these) */
+	if (strncmp(pkt, "qfThreadInfo", 12) == 0) {
+		gdb_send_packet("m1", 2);
+		return;
+	}
+	if (strncmp(pkt, "qsThreadInfo", 12) == 0) {
+		gdb_send_packet("l", 1);
+		return;
+	}
+
+	/* Current thread ID */
+	if (strncmp(pkt, "qC", 2) == 0 && pkt[2] == '\0') {
+		gdb_send_packet("QC1", 3);
+		return;
+	}
+
+	/* Register info (LLDB-specific) */
+	if (strncmp(pkt, "qRegisterInfo", 13) == 0) {
+		uint32_t reg_num;
+		const char *p = pkt + 13;
+		size_t n;
+
+		reg_num = strtoul(p, NULL, 16);
+		n = arch_gdb_register_info(reg_num, buf, len);
+		if (n > 0) {
+			gdb_send_packet(buf, n);
+		} else {
+			/* No more registers - signal end of list */
+			gdb_send_packet("E45", 3);
+		}
 		return;
 	}
 
@@ -858,6 +916,21 @@ int z_gdb_main_loop(struct gdb_ctx *ctx)
 		/* v packets */
 		case 'v':
 			gdb_v_packet(buf, sizeof(buf), &state);
+			break;
+
+		/*
+		 * Thread select (H operations).
+		 * LLDB requires Hg (set thread for 'g' ops) and
+		 * Hc (set thread for 'c' ops) to return OK.
+		 * Single-threaded stub: always accept.
+		 */
+		case 'H':
+			gdb_send_packet("OK", 2);
+			break;
+
+		/* Kill request */
+		case 'k':
+			gdb_send_packet(NULL, 0);
 			break;
 
 		/*
