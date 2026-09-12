@@ -97,7 +97,7 @@ extern char z_hex_user_readable_end[];
  * reproduced at 4KB granularity, gone at 64KB. See HEXAGON_ROM_RAM_ALIGN
  * in the linker script for the full explanation.
  */
-#define HEX_PAGE_SIZE       0x10000
+#define HEX_PAGE_SIZE       Z_HEXAGON_L2_PAGE_SIZE
 #define HEX_PAGE_SHIFT      16
 #define HEX_L2_ENTRIES      (HEX_PGDIR_SIZE / HEX_PAGE_SIZE)
 #define HEX_L2_TABLE_BYTES  (HEX_L2_ENTRIES * sizeof(uint32_t))

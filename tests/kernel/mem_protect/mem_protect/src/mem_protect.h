@@ -68,6 +68,8 @@ static inline void set_fault_valid(bool valid)
 #endif
 #elif defined(CONFIG_XTENSA)
 #define MEM_REGION_ALLOC (4096)
+#elif defined(CONFIG_HEXAGON)
+#define MEM_REGION_ALLOC (Z_HEXAGON_L2_PAGE_SIZE)
 #else
 #error "Test suite not compatible for the given architecture"
 #endif

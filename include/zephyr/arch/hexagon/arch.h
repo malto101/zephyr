@@ -166,6 +166,16 @@ static inline bool arch_is_in_isr(void)
 	return z_hexagon_isr_nesting != 0U;
 }
 
+/*
+ * H2 second-level page-table granularity (arch/hexagon/core/mem_manage.c's
+ * HEX_PAGE_SIZE, defined in terms of this same macro) -- larger than
+ * CONFIG_MMU_PAGE_SIZE for TLB efficiency, since a single L2 table uses one
+ * page size across the whole 4MB PGD entry it covers. Every range mapped
+ * through hexagon_l2_map_range(), memory domain partitions included, must
+ * be aligned and sized to this.
+ */
+#define Z_HEXAGON_L2_PAGE_SIZE 0x10000
+
 #ifdef CONFIG_USERSPACE
 /* Memory partition attributes for userspace support */
 typedef uint32_t k_mem_partition_attr_t;
