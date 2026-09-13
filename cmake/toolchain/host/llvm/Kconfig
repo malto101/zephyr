@@ -3,7 +3,7 @@
 
 choice LLVM_LINKER
 	prompt "LLVM Linker"
-	default LLVM_USE_LLD if HEXAGON
+	default LLVM_USE_ELD if HEXAGON
 	default LLVM_USE_LD
 
 config LLVM_USE_LD
@@ -16,13 +16,17 @@ config LLVM_USE_LLD
 	help
 	  Use LLVM built-in lld linker with llvm/clang.
 	  Host binutils ld does not recognise the Hexagon target
-	  ("unrecognised emulation mode: cpu=hexagonvNN"), so lld is the only
-	  linker in this toolchain variant that can link Hexagon.
+	  ("unrecognised emulation mode: cpu=hexagonvNN"), so lld and eld are
+	  the only linkers in this toolchain variant that can link Hexagon.
 
 config LLVM_USE_ELD
 	bool "ELD ld.eld"
 	help
 	  Use the ELD linker (ld.eld) with llvm/clang.
+	  Default for Hexagon: unlike lld, eld resolves an out-of-range branch
+	  to an undefined weak symbol through an in-range guard stub instead
+	  of relocating straight to address 0, so it does not need thunk
+	  support for that case.
 
 endchoice
 
