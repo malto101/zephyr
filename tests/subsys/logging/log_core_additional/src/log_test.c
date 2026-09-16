@@ -42,7 +42,9 @@ static struct k_mem_partition *mem_parts[] = {
 	&z_libc_partition,
 #endif
 	&ztest_mem_partition,
-	&k_log_partition
+#if CONFIG_LOG_ALWAYS_RUNTIME
+	&k_log_partition,
+#endif
 };
 #endif
 
