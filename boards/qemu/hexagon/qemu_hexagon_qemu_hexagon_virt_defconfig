@@ -21,6 +21,12 @@ CONFIG_STACK_SENTINEL=y
 CONFIG_USERSPACE=y
 CONFIG_THREAD_CUSTOM_DATA=y
 
+# CONFIG_USERSPACE is on by default here (unlike most boards), so tests that
+# create more than the CONFIG_MAX_THREAD_BYTES=2 default of 16 threads without
+# expecting to need kernel-object thread-permission bits for them fail to
+# build ("Too many thread objects") purely because of this board's defaults.
+CONFIG_MAX_THREAD_BYTES=8
+
 # Hexagon's ABI is register-heavy (callee-saved r16-r27 are 48 bytes per
 # frame), and CONFIG_USERSPACE adds a syscall trampoline frame on top of
 # every privileged call chain; the defaults are too small.
