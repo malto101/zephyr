@@ -191,6 +191,7 @@ static void log_setup(bool backend2_enable)
 
 #endif
 
+#ifndef CONFIG_USERSPACE
 static bool log_test_process(void)
 {
 	if (IS_ENABLED(CONFIG_LOG_PROCESS_THREAD)) {
@@ -202,6 +203,7 @@ static bool log_test_process(void)
 		return log_process();
 	}
 }
+#endif
 
 /**
  * @brief Support multi-processor systems
@@ -572,7 +574,11 @@ ZTEST_USER(test_log_core_additional, test_log_msg_create_user)
 			  Z_LOG_LOCAL_DOMAIN_ID, NULL,
 		  LOG_LEVEL_INTERNAL_RAW_STRING, NULL, 0, TEST_MESSAGE);
 
-	while (log_test_process()) {
+	/* log_test_process()/log_flush() rely on the (kernel-only) backend1
+	 * and are not usable from user mode; drain with the syscall-safe
+	 * log_process(), as the other ZTEST_USER cases in log_test_user.c do.
+	 */
+	while (log_process()) {
 	}
 }
 
