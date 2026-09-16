@@ -10,10 +10,16 @@ tests:
     extra_configs:
       - CONFIG_LOG_MODE_DEFERRED=y
       - CONFIG_LOG_MODE_OVERFLOW=y
+    # CONFIG_ZTRESS depends on !CONFIG_USERSPACE, which this board forces on.
+    platform_exclude:
+      - qemu_hexagon/qemu_hexagon_virt
   logging.stress.light_no_overflow:
     extra_configs:
       - CONFIG_LOG_MODE_DEFERRED=y
       - CONFIG_LOG_MODE_OVERFLOW=n
+    # CONFIG_ZTRESS depends on !CONFIG_USERSPACE, which this board forces on.
+    platform_exclude:
+      - qemu_hexagon/qemu_hexagon_virt
   logging.log_stress:
     extra_configs:
       - CONFIG_LOG_MODE_DEFERRED=y
