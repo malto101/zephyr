@@ -618,6 +618,14 @@ def find_kobjects(elf, syms):
     user_stack_start = syms["z_user_stacks_start"]
     user_stack_end = syms["z_user_stacks_end"]
 
+    sym_addrs = {
+        sym.entry.st_value
+        for section in elf.iter_sections()
+        if isinstance(section, SymbolTableSection)
+        for sym in section.iter_symbols()
+        if sym.entry["st_shndx"] != "SHN_ABS"
+    }
+
     di = elf.get_dwarf_info()
 
     variables = []
@@ -701,6 +709,17 @@ def find_kobjects(elf, syms):
                 addr = die.dwarfinfo.get_addr(die.cu, addr_index)
             except Exception:
                 debug_die(die, f"kernel object '{name}' unresolvable DW_OP_addrx index")
+                continue
+
+            sym_addr = syms.get(name)
+            if sym_addr is not None and sym_addr != addr:
+                debug_die(die, f"kernel object '{name}' DW_OP_addrx resolved to "
+                                f"{hex(addr)} but the symbol table says {hex(sym_addr)}; "
+                                "using the symbol table address")
+                addr = sym_addr
+            elif sym_addr is None and addr not in sym_addrs:
+                debug_die(die, f"kernel object '{name}' has no linked symbol, "
+                                "likely garbage-collected; skipping")
                 continue
         elif "CONFIG_64BIT" in syms:
             addr = struct.unpack(endian_code + "Q", bytes(loc.value[1:9]))[0]
