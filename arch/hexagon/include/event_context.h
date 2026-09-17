@@ -84,21 +84,14 @@ struct event_context {
 	uint32_t usr;              /**< user status register USR */
 	uint32_t r28;              /**< R28 (caller-saved, not in r0-r15 pairs) */
 	uint32_t scratch;          /**< temporary slot used during EVENT_EXIT */
-#ifdef CONFIG_GDBSTUB
+#if defined(CONFIG_GDBSTUB) || defined(CONFIG_DEBUG_COREDUMP)
 	/*
-	 * Callee-saved GPRs and GP/UGP, saved only for CONFIG_GDBSTUB.
-	 *
-	 * Every other event handler leaves r16-r27 alone: they are true
-	 * ABI callee-saved registers, so any C function the handler calls
-	 * already preserves the interrupted code's values in its own
-	 * prologue/epilogue without this file's help. The debug stub is
-	 * different -- it needs to *read* those values from deep inside
-	 * the C handler chain (irq_manage.c -> gdbstub.c), and by then a
-	 * callee may already have repurposed the physical register for
-	 * its own locals; the interrupted value only still exists in that
-	 * callee's own stack slot, which nothing outside it can address.
-	 * EVENT_ENTRY runs before any C code does, so this is the only
-	 * point they are guaranteed to still hold the trap-time values.
+	 * Callee-saved GPRs and GP/UGP: true ABI callee-saved registers,
+	 * normally left alone since any C function already preserves them.
+	 * Saved here anyway for consumers (debug stub, coredump) that read
+	 * them from deep in the C handler chain, after a callee may have
+	 * repurposed the physical register -- EVENT_ENTRY is the only point
+	 * they're guaranteed to still hold the trap-time values.
 	 */
 	uint32_t r16_r17[2];       /**< r16, r17 */
 	uint32_t r18_r19[2];       /**< r18, r19 */
@@ -127,7 +120,7 @@ struct event_context {
  * If struct event_context grows beyond EVENT_CTX_SIZE, update EVENT_CTX_SIZE
  * here and in event_handlers.S (keep 8-byte aligned).
  */
-#ifdef CONFIG_GDBSTUB
+#if defined(CONFIG_GDBSTUB) || defined(CONFIG_DEBUG_COREDUMP)
 #define EVENT_CTX_SIZE 0xb0
 #else
 #define EVENT_CTX_SIZE 0x78

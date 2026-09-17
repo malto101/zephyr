@@ -65,7 +65,7 @@ static void z_hexagon_esf_from_ctx(struct arch_esf *esf, const struct event_cont
 	esf->r29_sp = (uint32_t)ctx + EVENT_CTX_SIZE + EVENT_ENTRY_ALLOCFRAME_OVERHEAD;
 	esf->r30_fp = *(const uint32_t *)((const uint8_t *)ctx + EVENT_CTX_SIZE);
 
-#ifdef CONFIG_GDBSTUB
+#if defined(CONFIG_GDBSTUB) || defined(CONFIG_DEBUG_COREDUMP)
 	esf->r16 = ctx->r16_r17[0];
 	esf->r17 = ctx->r16_r17[1];
 	esf->r18 = ctx->r18_r19[0];
@@ -91,7 +91,7 @@ static void z_hexagon_dump_esf(const struct arch_esf *esf)
 		esf->r8, esf->r9, esf->r10, esf->r11);
 	LOG_ERR("r12: 0x%08x  r13: 0x%08x  r14: 0x%08x  r15: 0x%08x",
 		esf->r12, esf->r13, esf->r14, esf->r15);
-#ifdef CONFIG_GDBSTUB
+#if defined(CONFIG_GDBSTUB) || defined(CONFIG_DEBUG_COREDUMP)
 	LOG_ERR("r16: 0x%08x  r17: 0x%08x  r18: 0x%08x  r19: 0x%08x",
 		esf->r16, esf->r17, esf->r18, esf->r19);
 	LOG_ERR("r20: 0x%08x  r21: 0x%08x  r22: 0x%08x  r23: 0x%08x",
