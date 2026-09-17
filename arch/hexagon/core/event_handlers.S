@@ -43,7 +43,7 @@
 #define EVENT_CTX_USR       0x68
 #define EVENT_CTX_R28       0x6C
 #define EVENT_CTX_SCRATCH   0x70
-#ifdef CONFIG_GDBSTUB
+#if defined(CONFIG_GDBSTUB) || defined(CONFIG_DEBUG_COREDUMP)
 #define EVENT_CTX_R16_R17   0x78
 #define EVENT_CTX_R18_R19   0x80
 #define EVENT_CTX_R20_R21   0x88
@@ -142,11 +142,9 @@ GDATA(_kernel)
 	r0 = usr
 	memw(r29+#EVENT_CTX_USR) = r0
 
-#ifdef CONFIG_GDBSTUB
-	/*
-	 * Save callee-saved GPRs and GP/UGP for the debug stub.  Must
-	 * happen here, before any C code runs: see the field comment in
-	 * event_context.h for why capturing them later is not safe.
+#if defined(CONFIG_GDBSTUB) || defined(CONFIG_DEBUG_COREDUMP)
+	/* Save callee-saved GPRs and GP/UGP before any C code runs
+	 * (see event_context.h).
 	 */
 	{
 		memd(r29+#EVENT_CTX_R16_R17) = r17:16
@@ -301,7 +299,7 @@ _event_restore_\event_id:
 	r0 = memw(r29+#EVENT_CTX_USR)
 	usr = r0
 
-#ifdef CONFIG_GDBSTUB
+#if defined(CONFIG_GDBSTUB) || defined(CONFIG_DEBUG_COREDUMP)
 	/* Restore callee-saved GPRs and GP/UGP (GDB may have modified them) */
 	{
 		r17:16 = memd(r29+#EVENT_CTX_R16_R17)
