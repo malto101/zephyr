@@ -90,7 +90,7 @@ void z_hexagon_event_handler(unsigned int event_num, struct event_context *ctx)
 
 	switch (event_num) {
 	case HEXAGON_EVENT_MACHINE_CHECK:
-		z_hexagon_fatal_error(K_ERR_CPU_EXCEPTION);
+		z_hexagon_fatal_error_ctx(K_ERR_CPU_EXCEPTION, ctx);
 		break;
 
 	case HEXAGON_EVENT_GENERAL_EXCEPTION:
@@ -102,7 +102,7 @@ void z_hexagon_event_handler(unsigned int event_num, struct event_context *ctx)
 		/* Handled entirely by z_hexagon_enhanced_debug asm stub */
 		break;
 #else
-		z_hexagon_fatal_error(K_ERR_CPU_EXCEPTION);
+		z_hexagon_fatal_error_ctx(K_ERR_CPU_EXCEPTION, ctx);
 		break;
 #endif
 
@@ -115,7 +115,7 @@ void z_hexagon_event_handler(unsigned int event_num, struct event_context *ctx)
 		break;
 
 	default:
-		z_hexagon_fatal_error(K_ERR_SPURIOUS_IRQ);
+		z_hexagon_fatal_error_ctx(K_ERR_SPURIOUS_IRQ, ctx);
 		break;
 	}
 
@@ -202,7 +202,7 @@ static void z_hexagon_exception_handler(struct event_context *ctx)
 #endif
 
 	/* Fatal error for now */
-	z_hexagon_fatal_error(K_ERR_CPU_EXCEPTION);
+	z_hexagon_fatal_error_ctx(K_ERR_CPU_EXCEPTION, ctx);
 }
 
 /* Handle trap0 (syscall) events.
@@ -266,8 +266,7 @@ static void z_hexagon_trap0_handler(struct event_context *ctx)
 	 * With CONFIG_USERSPACE disabled, trap0 should never fire from
 	 * application code.  Treat any unexpected trap0 as a fatal error.
 	 */
-	ARG_UNUSED(ctx);
-	z_hexagon_fatal_error(K_ERR_CPU_EXCEPTION);
+	z_hexagon_fatal_error_ctx(K_ERR_CPU_EXCEPTION, ctx);
 #endif
 }
 

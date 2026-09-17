@@ -18,7 +18,10 @@ void hexagon_intc_disable(uint32_t irq);
 void hexagon_intc_set_priority(uint32_t irq, uint32_t priority);
 void hexagon_intc_init(void);
 
+struct event_context;
+
 /* Fatal error handler (fatal.c) */
 FUNC_NORETURN void z_hexagon_fatal_error(unsigned int reason);
+FUNC_NORETURN void z_hexagon_fatal_error_ctx(unsigned int reason, const struct event_context *ctx);
 
 #endif /* ZEPHYR_ARCH_HEXAGON_INCLUDE_HEXAGON_INTC_H_ */
