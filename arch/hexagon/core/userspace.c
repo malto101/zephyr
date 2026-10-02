@@ -17,7 +17,6 @@
 #include <zephyr/init.h>
 #include <kernel_internal.h>
 #include <hexagon_vm.h>
-#include <offsets_short.h>
 
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 
@@ -143,43 +142,21 @@ size_t arch_user_string_nlen(const char *s, size_t maxsize, int *err_arg)
 }
 
 /*
- * __naked comes from picolibc's sys/cdefs.h, so it silently disappears on
- * any other libc (e.g. CONFIG_MINIMAL_LIBC). Define it locally instead.
- */
-#ifndef __naked
-#define __naked __attribute__((naked))
-#endif
-
-/*
  * Guest register usage for vmrte:
  *   G0 = GELR (entry point)
  *   G1 = GSR (bit 31 = user mode, bit 30 = IE)
  *   G2 = GOSP (user stack pointer)
  *   G3 = GBADVA (0 for normal entry)
  */
-static void __used __naked hexagon_user_thread_exit(void)
+static void __used hexagon_user_thread_exit(void)
 {
 	/*
-	 * User function returned -- call k_thread_abort(self) via explicit
-	 * trap0 syscall; a C wrapper's user-mode check could be optimized
-	 * away. Syscall convention: r0 = arg (thread), r6 = syscall number.
+	 * User function returned: abort self. Runs in user mode, so the
+	 * current thread comes from TLS, never from kernel-only _kernel;
+	 * explicit trap0 so no kernel-side shortcut is taken.
 	 */
-	__asm__ volatile(
-		/* r0 = _kernel.cpus[0].current (k_current_get) */
-		"r0 = ##_kernel\n\t"
-		"r0 = add(r0, #%[cpus_off])\n\t"
-		"r0 = memw(r0+#%[cur_off])\n\t"
-		/* syscall: k_thread_abort(r0) */
-		"r6 = #%[sc_id]\n\t"
-		"trap0(#0x1)\n\t"
-		/* should not return -- loop as backstop */
-		"1: jump 1b\n\t"
-		:
-		: [cpus_off] "i"(___kernel_t_cpus_OFFSET),
-		  [cur_off] "i"(___cpu_t_current_OFFSET),
-		  [sc_id] "i"(K_SYSCALL_K_THREAD_ABORT)
-		:
-	);
+	arch_syscall_invoke1((uintptr_t)k_current_get(), K_SYSCALL_K_THREAD_ABORT);
+	CODE_UNREACHABLE;
 }
 
 void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void *p3)
