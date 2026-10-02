@@ -142,44 +142,21 @@ size_t arch_user_string_nlen(const char *s, size_t maxsize, int *err_arg)
 }
 
 /*
- * __naked comes from picolibc's sys/cdefs.h, so it silently disappears on
- * any other libc (e.g. CONFIG_MINIMAL_LIBC). Define it locally instead.
- */
-#ifndef __naked
-#define __naked __attribute__((naked))
-#endif
-
-/*
  * Guest register usage for vmrte:
  *   G0 = GELR (entry point)
  *   G1 = GSR (bit 31 = user mode, bit 30 = IE)
  *   G2 = GOSP (user stack pointer)
  *   G3 = GBADVA (0 for normal entry)
  */
-static void __used __naked hexagon_user_thread_exit(void)
+static void __used hexagon_user_thread_exit(void)
 {
 	/*
-	 * User function returned -- call k_thread_abort(self) via explicit
-	 * trap0 syscalls; a C wrapper's user-mode check could be optimized
-	 * away. Syscall convention: r0 = arg/return value, r6 = syscall number.
-	 *
-	 * This runs in user mode, so ask the kernel for the current thread
-	 * rather than reading _kernel directly.
+	 * User function returned: abort self. Runs in user mode, so the
+	 * current thread comes from TLS, never from kernel-only _kernel;
+	 * explicit trap0 so no kernel-side shortcut is taken.
 	 */
-	__asm__ volatile(
-		/* syscall: r0 = k_sched_current_thread_query() */
-		"r6 = #%[query_id]\n\t"
-		"trap0(#0x1)\n\t"
-		/* syscall: k_thread_abort(r0) */
-		"r6 = #%[abort_id]\n\t"
-		"trap0(#0x1)\n\t"
-		/* should not return -- loop as backstop */
-		"1: jump 1b\n\t"
-		:
-		: [query_id] "i"(K_SYSCALL_K_SCHED_CURRENT_THREAD_QUERY),
-		  [abort_id] "i"(K_SYSCALL_K_THREAD_ABORT)
-		:
-	);
+	arch_syscall_invoke1((uintptr_t)k_current_get(), K_SYSCALL_K_THREAD_ABORT);
+	CODE_UNREACHABLE;
 }
 
 void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void *p3)
