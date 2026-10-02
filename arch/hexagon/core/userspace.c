@@ -407,13 +407,21 @@ static uint32_t hexagon_decompose_region(struct hexagon_linear_entry *entries,
 	return n;
 }
 
-extern char __start[];
 extern char _hexagon_page_table[];
 
 /* Matches _setup_page_table's own RAM granule (hvm_event_vectors.S). */
 #define HEXAGON_RAM_CHUNK_SIZE 0x400000U
 
-#define HEXAGON_FIXED_TAIL_MAX_RAM_ENTRIES 8
+/*
+ * Image RAM is mapped one 4KB page per entry, see hexagon_fixed_tail_init().
+ * ponytail: 4MB of image RAM max, and the walk is linear in this count;
+ * switch to a page-table (VM_TRANS_TYPE_TABLE) per-thread map if images
+ * outgrow it or TLB-miss latency matters.
+ */
+#define HEXAGON_FIXED_TAIL_MAX_RAM_PAGES 1024
+
+/* Budget for the RAM between image end and the next 4MB boundary. */
+#define HEXAGON_FIXED_TAIL_POST_IMAGE_ENTRIES 16
 
 /*
  * Budgets for the page-granular carve-outs decomposed via
@@ -426,13 +434,13 @@ extern char _hexagon_page_table[];
 #define HEXAGON_FIXED_TAIL_RODATA_ENTRIES 5
 
 /*
- * Text/rodata carve-out entries + RAM entries (up to
- * HEXAGON_FIXED_TAIL_MAX_RAM_ENTRIES) + UART + two H2-kernel entries +
+ * Text/rodata carve-out entries + image RAM pages + post-image RAM
+ * entries + UART + two H2-kernel entries +
  * one all-zero terminator.
  */
 #define HEXAGON_FIXED_TAIL_ENTRIES                                                               \
 	(HEXAGON_FIXED_TAIL_TEXT_ENTRIES + HEXAGON_FIXED_TAIL_RODATA_ENTRIES +                    \
-	 HEXAGON_FIXED_TAIL_MAX_RAM_ENTRIES + 4)
+	 HEXAGON_FIXED_TAIL_MAX_RAM_PAGES + HEXAGON_FIXED_TAIL_POST_IMAGE_ENTRIES + 4)
 
 /*
  * Shared tail chained onto every per-thread linear list (own-stack and
@@ -475,9 +483,6 @@ static struct hexagon_linear_entry hexagon_fixed_tail[HEXAGON_FIXED_TAIL_ENTRIES
 
 static int hexagon_fixed_tail_init(void)
 {
-	uintptr_t aligned_start = ROUND_DOWN((uintptr_t)__start, HEXAGON_RAM_CHUNK_SIZE);
-	size_t len = (uintptr_t)_image_ram_end - aligned_start;
-	uint32_t ram_chunks = (uint32_t)DIV_ROUND_UP(len, HEXAGON_RAM_CHUNK_SIZE);
 	uint32_t idx = 0;
 	uintptr_t region_addr;
 	size_t region_size;
@@ -485,8 +490,10 @@ static int hexagon_fixed_tail_init(void)
 	uintptr_t text_end = (uintptr_t)__text_region_end;
 	uintptr_t rodata_start = (uintptr_t)__rodata_region_start;
 	uintptr_t rodata_end = (uintptr_t)__rodata_region_end;
+	uintptr_t ram_start = ROUND_UP(MAX(text_end, rodata_end), 0x1000U);
+	uintptr_t ram_end = ROUND_UP((uintptr_t)_image_ram_end, 0x1000U);
 
-	if (ram_chunks > HEXAGON_FIXED_TAIL_MAX_RAM_ENTRIES) {
+	if ((ram_end - ram_start) / 0x1000U > HEXAGON_FIXED_TAIL_MAX_RAM_PAGES) {
 		k_panic();
 	}
 
@@ -511,15 +518,30 @@ static int hexagon_fixed_tail_init(void)
 						 __HEXAGON_C_WB_L2);
 	}
 
-	for (uint32_t i = 0; i < ram_chunks; i++) {
-		uintptr_t pa = aligned_start + (uintptr_t)i * HEXAGON_RAM_CHUNK_SIZE;
-
+	/*
+	 * H2 loads a matched linear entry into the TLB at the entry's full
+	 * size, and ctlbw refuses (without evicting) any entry overlapping
+	 * one already present for the same ASID. A large RAM entry around
+	 * a smaller, earlier-matching one (text, rodata, a thread's stack or
+	 * partition page) therefore livelocks on TLB miss as soon as both
+	 * are touched. 4KB pages can never partially overlap an earlier
+	 * entry: either the earlier entry contains the page and wins the
+	 * walk, or the two are disjoint.
+	 */
+	for (uintptr_t pa = ram_start; pa < ram_end; pa += 0x1000U) {
 		hexagon_linear_entry_set(&hexagon_fixed_tail[idx], pa, pa,
-					  __HVM_LINEAR_SIZE_4MB,
+					  __HVM_LINEAR_SIZE_4KB,
 					  __HVM_LINEAR_R | __HVM_LINEAR_W | __HVM_LINEAR_X,
 					  __HEXAGON_C_WB_L2, 0);
 		idx++;
 	}
+
+	/* Rest of the boot table's last RAM chunk: no per-thread entries here. */
+	idx += hexagon_decompose_region(&hexagon_fixed_tail[idx],
+					 HEXAGON_FIXED_TAIL_POST_IMAGE_ENTRIES, ram_end,
+					 ROUND_UP(ram_end, HEXAGON_RAM_CHUNK_SIZE) - ram_end,
+					 __HVM_LINEAR_R | __HVM_LINEAR_W | __HVM_LINEAR_X,
+					 __HEXAGON_C_WB_L2);
 
 	hexagon_linear_entry_set(&hexagon_fixed_tail[idx], 0x10000000U, 0x10000000U,
 				  __HVM_LINEAR_SIZE_4MB,
