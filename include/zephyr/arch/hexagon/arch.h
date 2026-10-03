@@ -126,14 +126,16 @@ typedef uint32_t k_mem_partition_attr_t;
 /**
  * @brief Architecture-specific memory domain data.
  *
- * Bumped by arch_mem_domain_partition_add/remove() whenever a
- * partition changes; compared against each thread's own
- * _thread_arch.mem_domain_generation to decide whether that thread's
- * per-thread VM_TRANS_TYPE_LINEAR buffer needs to be rebuilt before
- * its next switch-in. Bookkeeping only -- installs nothing by itself.
+ * list holds one dense run of VM_TRANS_TYPE_LINEAR entries per partition
+ * plus a chain entry to the shared fixed tail; every member thread's
+ * stack overlay chains here. generation is bumped on each rebuild so
+ * member threads know to invalidate their TLB entries on switch-in.
  */
 struct arch_mem_domain {
 	uint32_t generation;
+	struct hexagon_linear_entry
+		list[(CONFIG_MAX_DOMAIN_PARTITIONS * HEXAGON_MEM_DOMAIN_PARTITION_ENTRIES) + 1]
+		__aligned(8);
 };
 
 typedef struct arch_mem_domain arch_mem_domain_t;

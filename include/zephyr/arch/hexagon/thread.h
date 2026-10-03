@@ -125,29 +125,19 @@ struct _thread_arch {
 	uint8_t priv_stack[CONFIG_PRIVILEGED_STACK_SIZE] __aligned(ARCH_STACK_PTR_ALIGN);
 
 	/*
-	 * Generation of the owning k_mem_domain's partition set that
-	 * mem_domain_list below was last rebuilt against; compared with
-	 * arch_mem_domain_t.generation to decide whether a resync is due
-	 * before this thread's next switch-in. 0 (and no domain yet) means
-	 * "never built".
+	 * Owning domain's arch.generation that mem_domain_list was last
+	 * installed against; 0 means "rebuild before next install".
 	 */
 	uint32_t mem_domain_generation;
 
 	/*
-	 * Per-thread VM_TRANS_TYPE_LINEAR buffer: own-stack entries first
-	 * (narrowest, so they win the first-match-wins walk), then one
-	 * slot per possible partition, then a chain entry to the shared
-	 * "fixed tail" buffer (RAM/UART/H2-kernel fallback + terminator).
-	 * Kept at a fixed address for the lifetime of the thread so
-	 * repeated hexagon_vm_newmap() calls hash to the same H2 ASID
-	 * slot instead of minting a new one on every switch-in. H2 reads
-	 * entries as doublewords, so the buffer must be 8-byte aligned.
+	 * Per-thread VM_TRANS_TYPE_LINEAR overlay: own-stack entries, then a
+	 * chain entry to the domain's list (arch_mem_domain_t.list). Kept at
+	 * a fixed address so H2 reuses the same ASID, and its TLB entries,
+	 * across switch-ins. H2 reads entries as doublewords: 8-byte aligned.
 	 */
 	struct hexagon_linear_entry
-		mem_domain_list[HEXAGON_MEM_DOMAIN_STACK_ENTRIES +
-				 (CONFIG_MAX_DOMAIN_PARTITIONS *
-				  HEXAGON_MEM_DOMAIN_PARTITION_ENTRIES) +
-				 1] __aligned(8);
+		mem_domain_list[HEXAGON_MEM_DOMAIN_STACK_ENTRIES + 1] __aligned(8);
 #endif
 };
 
