@@ -140,13 +140,14 @@ struct _thread_arch {
 	 * "fixed tail" buffer (RAM/UART/H2-kernel fallback + terminator).
 	 * Kept at a fixed address for the lifetime of the thread so
 	 * repeated hexagon_vm_newmap() calls hash to the same H2 ASID
-	 * slot instead of minting a new one on every switch-in.
+	 * slot instead of minting a new one on every switch-in. H2 reads
+	 * entries as doublewords, so the buffer must be 8-byte aligned.
 	 */
 	struct hexagon_linear_entry
 		mem_domain_list[HEXAGON_MEM_DOMAIN_STACK_ENTRIES +
 				 (CONFIG_MAX_DOMAIN_PARTITIONS *
 				  HEXAGON_MEM_DOMAIN_PARTITION_ENTRIES) +
-				 1];
+				 1] __aligned(8);
 #endif
 };
 
