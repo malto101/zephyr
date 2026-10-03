@@ -26,6 +26,7 @@ LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
  * switch.S, and from event_handlers.S.
  */
 void z_hexagon_mem_domain_switch(void);
+static void hexagon_mem_domain_enter(struct k_thread *thread);
 
 int arch_buffer_validate(const void *addr, size_t size, int write)
 {
@@ -231,6 +232,7 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 	 * exit, even one unrelated to this thread.
 	 */
 	thread->arch.priv_level = 1;
+	hexagon_mem_domain_enter(thread);
 
 	/*
 	 * Install this thread's hardware memory-domain map before the
@@ -429,9 +431,10 @@ static uint32_t hexagon_decompose_region(struct hexagon_linear_entry *entries,
 
 /*
  * Image RAM is mapped one 4KB page per entry, see hexagon_fixed_tail_init().
- * ponytail: 4MB of image RAM max, and the walk is linear in this count;
- * switch to a page-table (VM_TRANS_TYPE_TABLE) per-thread map if images
- * outgrow it or TLB-miss latency matters.
+ * ponytail: 4MB of image RAM max, and a user thread's TLB miss on RAM
+ * outside its domain walks linearly through these; switch to a
+ * page-table (VM_TRANS_TYPE_TABLE) map per domain if images outgrow it
+ * or that latency matters.
  */
 #define HEXAGON_FIXED_TAIL_MAX_RAM_PAGES 1024
 
@@ -457,9 +460,8 @@ static uint32_t hexagon_decompose_region(struct hexagon_linear_entry *entries,
 	 HEXAGON_FIXED_TAIL_MAX_RAM_PAGES + HEXAGON_FIXED_TAIL_POST_IMAGE_ENTRIES + 4)
 
 /*
- * Shared tail chained onto every domain's linear list (each thread's
- * own-stack overlay chains to its domain's partition entries, see
- * hexagon_mem_domain_rebuild()): kernel
+ * Shared tail chained onto every domain's linear list (see
+ * hexagon_mem_domain_rebuild()) and onto hexagon_kernel_map: kernel
  * text, kernel rodata, RAM, UART, and the H2 kernel image, at the same
  * addresses/cache attributes the boot Table map already grants
  * everywhere -- except U is cleared for the RAM/H2-kernel entries,
@@ -495,6 +497,18 @@ static uint32_t hexagon_decompose_region(struct hexagon_linear_entry *entries,
  * no matter which domain is installed.
  */
 static struct hexagon_linear_entry hexagon_fixed_tail[HEXAGON_FIXED_TAIL_ENTRIES];
+
+/*
+ * Map installed while no domain is: image RAM in the largest aligned
+ * entries, then a chain to hexagon_fixed_tail for everything else.
+ * Nothing earlier in this list can overlap RAM, so the livelock that
+ * forces the tail's 4KB pages (see hexagon_fixed_tail_init()) cannot
+ * happen here, and a kernel thread's RAM miss walks ~20 entries, not
+ * ~1100. Same 37-entry bound as the text/rodata budgets.
+ */
+#define HEXAGON_KERNEL_MAP_RAM_ENTRIES 37
+
+static struct hexagon_linear_entry hexagon_kernel_map[HEXAGON_KERNEL_MAP_RAM_ENTRIES + 1];
 
 static int hexagon_fixed_tail_init(void)
 {
@@ -577,8 +591,14 @@ static int hexagon_fixed_tail_init(void)
 
 	/* hexagon_fixed_tail[idx] stays all-zero: list terminator. */
 
+	idx = hexagon_decompose_region(hexagon_kernel_map, HEXAGON_KERNEL_MAP_RAM_ENTRIES,
+				       ram_start,
+				       ROUND_UP(ram_end, HEXAGON_RAM_CHUNK_SIZE) - ram_start,
+				       __HVM_LINEAR_R | __HVM_LINEAR_W, __HEXAGON_C_WB_L2);
+	hexagon_linear_entry_set_chain(&hexagon_kernel_map[idx], hexagon_fixed_tail);
+
 	/* Replace the boot Table map: it is RWX everywhere. */
-	if (hexagon_vm_newmap(hexagon_fixed_tail, VM_TRANS_TYPE_LINEAR,
+	if (hexagon_vm_newmap(hexagon_kernel_map, VM_TRANS_TYPE_LINEAR,
 			      VM_TLB_INVALIDATE_TRUE) != 0) {
 		k_panic();
 	}
@@ -623,53 +643,73 @@ static uint32_t hexagon_partition_attr_to_xwru(k_mem_partition_attr_t attr)
 	return xwru;
 }
 
-/* NULL means "the fixed tail alone is currently installed". */
-static struct k_thread *hexagon_mem_domain_active_thread;
+/* NULL means "hexagon_kernel_map is currently installed". */
+static struct k_mem_domain *hexagon_mem_domain_active;
 
 /*
- * Reinstall the bare fixed tail for any thread with no mem domain, or
- * that has never dropped to user mode, as hexagon_fixed_tail_init() does
- * at boot. The tail never changes after boot, so its TLB entries stay.
+ * Fall back to the kernel map so the active list may be rewritten. It
+ * never changes after boot, so its TLB entries stay.
  */
-static void hexagon_mem_domain_install_boot_table(void)
-{
-	int ret = hexagon_vm_newmap(hexagon_fixed_tail, VM_TRANS_TYPE_LINEAR,
-				     VM_TLB_INVALIDATE_FALSE);
-
-	if (ret != 0) {
-		k_panic();
-	}
-}
-
-/* Fall back to the fixed tail so the active list may be rewritten. */
 static void hexagon_mem_domain_uninstall(void)
 {
-	if (hexagon_mem_domain_active_thread != NULL) {
-		hexagon_mem_domain_install_boot_table();
-		hexagon_mem_domain_active_thread = NULL;
+	if (hexagon_mem_domain_active == NULL) {
+		return;
 	}
+
+	if (hexagon_vm_newmap(hexagon_kernel_map, VM_TRANS_TYPE_LINEAR,
+			      VM_TLB_INVALIDATE_FALSE) != 0) {
+		k_panic();
+	}
+	hexagon_mem_domain_active = NULL;
 }
 
 /*
- * Rebuild domain->arch.list: one dense run of entries per non-empty
- * partition, then a chain link to the shared fixed tail. Called with
- * z_mem_domain_lock held, from the arch_mem_domain_*() hooks.
+ * Rebuild domain->arch.list: the stack of every member thread that has
+ * dropped to user mode (first, so it wins the first-match-wins walk over
+ * an overlapping partition), one dense run of entries per non-empty
+ * partition, then a chain link to the shared fixed tail. Every member
+ * thread installs this same list, so H2 (which keys ASIDs on the list
+ * address, H2K_asid_table_inc()) gives the whole domain one ASID.
+ * Same-domain threads may see each other's stacks: Hexagon does not
+ * select ARCH_MEM_DOMAIN_SUPPORTS_ISOLATED_STACKS.
  *
  * Entries are packed densely: a zero-valued gap entry would look like
  * the all-zero terminator to the HVM walker and truncate the list.
  *
  * H2 walks the installed list on every TLB miss, kernel-mode ones
- * included, so never rewrite it in place while installed: fall back to
- * the fixed tail first. The next switch-in sees the generation bump and
- * reinstalls with a TLB invalidate.
+ * included, so never rewrite it in place while installed. The next
+ * install sees stale and invalidates this list's ASID.
+ *
+ * Called with z_mem_domain_lock held.
  */
 static void hexagon_mem_domain_rebuild(struct k_mem_domain *domain, int skip_id)
 {
 	struct hexagon_linear_entry *list = domain->arch.list;
 	uint32_t idx = 0;
 	int remaining_partitions = domain->num_partitions;
+	struct k_thread *thread;
 
-	hexagon_mem_domain_uninstall();
+	if (hexagon_mem_domain_active == domain) {
+		hexagon_mem_domain_uninstall();
+	}
+
+	SYS_DLIST_FOR_EACH_CONTAINER(&domain->thread_mem_domain_list, thread,
+				     mem_domain_info.thread_mem_domain_node) {
+		if (thread->arch.priv_level == 0) {
+			continue;
+		}
+
+		uintptr_t stack_addr = thread->stack_info.start;
+		size_t stack_size = thread->stack_info.size;
+
+		hexagon_align_region_to_page(&stack_addr, &stack_size);
+
+		idx += hexagon_decompose_region(&list[idx],
+						 CONFIG_HEXAGON_MEM_DOMAIN_STACK_ENTRIES - idx,
+						 stack_addr, stack_size,
+						 __HVM_LINEAR_R | __HVM_LINEAR_W | __HVM_LINEAR_U,
+						 __HEXAGON_C_WB_L2);
+	}
 
 	for (int i = 0; remaining_partitions > 0 && i < CONFIG_MAX_DOMAIN_PARTITIONS; i++) {
 		const struct k_mem_partition *part = &domain->partitions[i];
@@ -694,40 +734,11 @@ static void hexagon_mem_domain_rebuild(struct k_mem_domain *domain, int skip_id)
 	}
 
 	hexagon_linear_entry_set_chain(&list[idx], hexagon_fixed_tail);
-	domain->arch.generation++;
-}
-
-/*
- * Rebuild thread->arch.mem_domain_list, the per-thread overlay: own-stack
- * entries first (so they win the first-match-wins walk over an
- * overlapping partition), then a chain link to the domain's list.
- */
-static void hexagon_mem_domain_thread_rebuild(struct k_thread *thread,
-					      struct k_mem_domain *domain)
-{
-	struct hexagon_linear_entry *list = thread->arch.mem_domain_list;
-	uintptr_t stack_addr = thread->stack_info.start;
-	size_t stack_size = thread->stack_info.size;
-	uint32_t idx;
-
-	hexagon_align_region_to_page(&stack_addr, &stack_size);
-
-	idx = hexagon_decompose_region(&list[0], HEXAGON_MEM_DOMAIN_STACK_ENTRIES,
-				       stack_addr, stack_size,
-				       __HVM_LINEAR_R | __HVM_LINEAR_W | __HVM_LINEAR_U,
-				       __HEXAGON_C_WB_L2);
-
-	hexagon_linear_entry_set_chain(&list[idx], domain->arch.list);
+	domain->arch.stale = 1;
 }
 
 int arch_mem_domain_init(struct k_mem_domain *domain)
 {
-	/*
-	 * rebuild() bumps this to 1: above the 0 sentinel
-	 * _thread_arch.mem_domain_generation is reset to, so a thread's
-	 * first switch-in under this domain always rebuilds its overlay.
-	 */
-	domain->arch.generation = 0;
 	hexagon_mem_domain_rebuild(domain, -1);
 	return 0;
 }
@@ -747,31 +758,35 @@ int arch_mem_domain_partition_remove(struct k_mem_domain *domain, uint32_t parti
 	return 0;
 }
 
+/*
+ * Only threads already in user mode are listed; a thread still in
+ * supervisor mode gets its stack added by hexagon_mem_domain_enter()
+ * when it drops to user mode.
+ */
 int arch_mem_domain_thread_add(struct k_thread *thread)
 {
-	/*
-	 * Force an overlay rebuild (and TLB invalidate) before this thread's
-	 * next switch-in: domain generations are never 0, so this can't
-	 * coincidentally match the new domain's current counter.
-	 */
-	if (hexagon_mem_domain_active_thread == thread) {
-		hexagon_mem_domain_uninstall();
+	if (thread->arch.priv_level != 0) {
+		hexagon_mem_domain_rebuild(thread->mem_domain_info.mem_domain, -1);
 	}
-	thread->arch.mem_domain_generation = 0;
 	return 0;
 }
 
+/* The core has already unlinked thread; mem_domain is still the old one. */
 int arch_mem_domain_thread_remove(struct k_thread *thread)
 {
-	/*
-	 * No action needed: thread->mem_domain_info.mem_domain already
-	 * becomes NULL (by kernel core, outside arch code) before this
-	 * thread can switch in again, and z_hexagon_mem_domain_switch()'s
-	 * domain == NULL branch already falls back to the boot table map
-	 * in that case.
-	 */
-	ARG_UNUSED(thread);
+	if (thread->arch.priv_level != 0) {
+		hexagon_mem_domain_rebuild(thread->mem_domain_info.mem_domain, -1);
+	}
 	return 0;
+}
+
+/* List thread's stack in its domain, called once priv_level is set. */
+static void hexagon_mem_domain_enter(struct k_thread *thread)
+{
+	k_spinlock_key_t key = k_spin_lock(&z_mem_domain_lock);
+
+	hexagon_mem_domain_rebuild(thread->mem_domain_info.mem_domain, -1);
+	k_spin_unlock(&z_mem_domain_lock, key);
 }
 
 /*
@@ -780,41 +795,32 @@ int arch_mem_domain_thread_remove(struct k_thread *thread)
  * on switch-in (z_hexagon_thread_start, EVENT_EXIT) and once more from
  * arch_user_mode_enter() for the very first drop to user mode.
  *
- * H2 keys ASIDs on the list address (H2K_asid_table_inc()), so each
- * overlay keeps its own ASID -- and its TLB entries -- across switches.
- * Only invalidate when the overlay or its domain list changed since this
- * thread's last install.
+ * A switch between threads of the same domain is a no-op. A rebuild
+ * always uninstalls first, so the active domain is never stale.
  */
 void z_hexagon_mem_domain_switch(void)
 {
 	struct k_thread *thread = k_sched_current_thread_query();
 	struct k_mem_domain *domain =
 		thread->arch.priv_level != 0 ? thread->mem_domain_info.mem_domain : NULL;
-	bool stale;
 
 	if (domain == NULL) {
 		hexagon_mem_domain_uninstall();
 		return;
 	}
 
-	stale = thread->arch.mem_domain_generation != domain->arch.generation;
-	if (hexagon_mem_domain_active_thread == thread && !stale) {
+	if (domain == hexagon_mem_domain_active) {
 		return;
 	}
 
-	if (stale) {
-		hexagon_mem_domain_thread_rebuild(thread, domain);
-	}
-
-	int ret = hexagon_vm_newmap(thread->arch.mem_domain_list, VM_TRANS_TYPE_LINEAR,
-				     stale ? VM_TLB_INVALIDATE_TRUE : VM_TLB_INVALIDATE_FALSE);
-
-	if (ret != 0) {
+	if (hexagon_vm_newmap(domain->arch.list, VM_TRANS_TYPE_LINEAR,
+			      domain->arch.stale ? VM_TLB_INVALIDATE_TRUE
+						 : VM_TLB_INVALIDATE_FALSE) != 0) {
 		k_panic();
 	}
 
-	thread->arch.mem_domain_generation = domain->arch.generation;
-	hexagon_mem_domain_active_thread = thread;
+	domain->arch.stale = 0;
+	hexagon_mem_domain_active = domain;
 }
 
 #endif /* CONFIG_USERSPACE */

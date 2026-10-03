@@ -22,16 +22,14 @@
 
 #ifdef CONFIG_USERSPACE
 /*
- * Per-region entry budgets for the greedy largest-aligned-size-class
- * decomposition arch_mem_domain_partition_add() and the own-stack
- * resync helper use to turn an arbitrary [start, start+size) range
- * into VM_TRANS_TYPE_LINEAR entries. A well-aligned region (the
+ * Per-partition entry budget for the greedy largest-aligned-size-class
+ * decomposition hexagon_mem_domain_rebuild() uses to turn an arbitrary
+ * [start, start+size) range into VM_TRANS_TYPE_LINEAR entries. A well-aligned region (the
  * common case) needs exactly one; this covers oddly-aligned/sized
  * ones too, up to the budget. Running out mid-region is logged and
  * stops early -- it is never treated as fatal, matching RISC-V PMP's
  * own "stop programming rather than assert" precedent.
  */
-#define HEXAGON_MEM_DOMAIN_STACK_ENTRIES     4
 #define HEXAGON_MEM_DOMAIN_PARTITION_ENTRIES 4
 #endif
 
@@ -123,21 +121,6 @@ struct _thread_arch {
 	 * in userspace.c for why it can't be carved out of anything else.
 	 */
 	uint8_t priv_stack[CONFIG_PRIVILEGED_STACK_SIZE] __aligned(ARCH_STACK_PTR_ALIGN);
-
-	/*
-	 * Owning domain's arch.generation that mem_domain_list was last
-	 * installed against; 0 means "rebuild before next install".
-	 */
-	uint32_t mem_domain_generation;
-
-	/*
-	 * Per-thread VM_TRANS_TYPE_LINEAR overlay: own-stack entries, then a
-	 * chain entry to the domain's list (arch_mem_domain_t.list). Kept at
-	 * a fixed address so H2 reuses the same ASID, and its TLB entries,
-	 * across switch-ins. H2 reads entries as doublewords: 8-byte aligned.
-	 */
-	struct hexagon_linear_entry
-		mem_domain_list[HEXAGON_MEM_DOMAIN_STACK_ENTRIES + 1] __aligned(8);
 #endif
 };
 
