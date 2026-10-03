@@ -23,6 +23,9 @@ config ARCH_SUPPORTS_COREDUMP_PRIV_STACKS
 config ARCH_SUPPORTS_COREDUMP_STACK_PTR
 	default y
 
+config ARCH_HAS_GDBSTUB
+	default y
+
 source "arch/hexagon/core/Kconfig"
 
 endmenu
