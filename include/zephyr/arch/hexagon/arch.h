@@ -25,6 +25,9 @@
 #include <irq.h>
 #include <irq_connect.h>
 #include <zephyr/sw_isr_table.h>
+#if defined(CONFIG_GDBSTUB)
+#include <zephyr/arch/hexagon/gdbstub.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -120,6 +123,7 @@ typedef uint32_t k_mem_partition_attr_t;
 #define K_MEM_PARTITION_P_RWX_U_RX ((k_mem_partition_attr_t)0x0d) /* priv RWX, user RX */
 #define K_MEM_PARTITION_P_RX_U_RX  ((k_mem_partition_attr_t)0x15) /* priv RX, user RX */
 
+#define K_MEM_PARTITION_IS_READABLE(attr)   ((attr) & 0x01)
 #define K_MEM_PARTITION_IS_WRITABLE(attr)   ((attr) & 0x02)
 #define K_MEM_PARTITION_IS_EXECUTABLE(attr) ((attr) & 0x04)
 
