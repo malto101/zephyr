@@ -439,14 +439,13 @@ extern char _hexagon_page_table[];
 #define HEXAGON_FIXED_TAIL_POST_IMAGE_ENTRIES 16
 
 /*
- * Budgets for the page-granular carve-outs decomposed via
- * hexagon_decompose_region(), same rationale as
- * HEXAGON_MEM_DOMAIN_STACK_ENTRIES/HEXAGON_MEM_DOMAIN_PARTITION_ENTRIES
- * (thread.h): a well-aligned region needs exactly one entry, this
- * budget just covers oddly-aligned/sized ones too.
+ * Text and rodata must be fully covered: an uncovered page faults in
+ * kernel mode too. Greedy decomposition uses at most 3 entries per size
+ * class on each side of the largest aligned chunk, so 2 * 3 * 6 classes
+ * (4KB..4MB) plus one 16MB chunk covers any region below 32MB.
  */
-#define HEXAGON_FIXED_TAIL_TEXT_ENTRIES   6
-#define HEXAGON_FIXED_TAIL_RODATA_ENTRIES 5
+#define HEXAGON_FIXED_TAIL_TEXT_ENTRIES   37
+#define HEXAGON_FIXED_TAIL_RODATA_ENTRIES 37
 
 /*
  * Text/rodata carve-out entries + image RAM pages + post-image RAM
