@@ -331,6 +331,8 @@ int arch_mem_domain_max_partitions_get(void)
 	return CONFIG_MAX_DOMAIN_PARTITIONS;
 }
 
+#endif /* CONFIG_USERSPACE */
+
 struct hexagon_size_class {
 	uint32_t size_class; /* one of __HVM_LINEAR_SIZE_* */
 	uint32_t bytes;
@@ -421,8 +423,6 @@ static uint32_t hexagon_decompose_region(struct hexagon_linear_entry *entries,
 
 	return n;
 }
-
-extern char _hexagon_page_table[];
 
 /* Matches _setup_page_table's own RAM granule (hvm_event_vectors.S). */
 #define HEXAGON_RAM_CHUNK_SIZE 0x400000U
@@ -544,8 +544,7 @@ static int hexagon_fixed_tail_init(void)
 	 */
 	for (uintptr_t pa = ram_start; pa < ram_end; pa += 0x1000U) {
 		hexagon_linear_entry_set(&hexagon_fixed_tail[idx], pa, pa,
-					  __HVM_LINEAR_SIZE_4KB,
-					  __HVM_LINEAR_R | __HVM_LINEAR_W | __HVM_LINEAR_X,
+					  __HVM_LINEAR_SIZE_4KB, __HVM_LINEAR_R | __HVM_LINEAR_W,
 					  __HEXAGON_C_WB_L2, 0);
 		idx++;
 	}
@@ -554,7 +553,7 @@ static int hexagon_fixed_tail_init(void)
 	idx += hexagon_decompose_region(&hexagon_fixed_tail[idx],
 					 HEXAGON_FIXED_TAIL_POST_IMAGE_ENTRIES, ram_end,
 					 ROUND_UP(ram_end, HEXAGON_RAM_CHUNK_SIZE) - ram_end,
-					 __HVM_LINEAR_R | __HVM_LINEAR_W | __HVM_LINEAR_X,
+					 __HVM_LINEAR_R | __HVM_LINEAR_W,
 					 __HEXAGON_C_WB_L2);
 
 	hexagon_linear_entry_set(&hexagon_fixed_tail[idx], 0x10000000U, 0x10000000U,
@@ -577,10 +576,18 @@ static int hexagon_fixed_tail_init(void)
 
 	/* hexagon_fixed_tail[idx] stays all-zero: list terminator. */
 
+	/* Replace the boot Table map: it is RWX everywhere. */
+	if (hexagon_vm_newmap(hexagon_fixed_tail, VM_TRANS_TYPE_LINEAR,
+			      VM_TLB_INVALIDATE_TRUE) != 0) {
+		k_panic();
+	}
+
 	return 0;
 }
 
-SYS_INIT(hexagon_fixed_tail_init, POST_KERNEL, 0);
+SYS_INIT(hexagon_fixed_tail_init, PRE_KERNEL_1, 0);
+
+#ifdef CONFIG_USERSPACE
 
 /*
  * Only the *user*-visible bits of K_MEM_PARTITION_P_* map onto the
@@ -732,17 +739,17 @@ void arch_mem_domain_thread_remove(struct k_thread *thread)
 	ARG_UNUSED(thread);
 }
 
-/* NULL means "the boot Table map is currently installed". */
+/* NULL means "the fixed tail alone is currently installed". */
 static struct k_thread *hexagon_mem_domain_active_thread;
 
 /*
- * Reinstall the flat, permissive boot Table map -- current behavior
- * for any thread with no mem domain, or that has never dropped to user
- * mode. Matches _setup_page_table's own install call at boot.
+ * Reinstall the bare fixed tail for any thread with no mem domain, or
+ * that has never dropped to user mode, as hexagon_fixed_tail_init() does
+ * at boot.
  */
 static void hexagon_mem_domain_install_boot_table(void)
 {
-	int ret = hexagon_vm_newmap(_hexagon_page_table, VM_TRANS_TYPE_TABLE,
+	int ret = hexagon_vm_newmap(hexagon_fixed_tail, VM_TRANS_TYPE_LINEAR,
 				     VM_TLB_INVALIDATE_TRUE);
 
 	if (ret != 0) {
