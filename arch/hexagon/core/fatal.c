@@ -12,6 +12,7 @@
 #include <event_context.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/fatal.h>
+#include <kswap.h>
 #include <hexagon_vm.h>
 #include <hexagon_fatal.h>
 
@@ -152,6 +153,25 @@ static void z_hexagon_dump_esf(const struct arch_esf *esf)
 	LOG_ERR(" pc: 0x%08x gsr: 0x%08x", esf->pc, esf->event_info[0]);
 }
 
+/*
+ * Unlike the trap-based ARCH_EXCEPT() of other arches, ours is a plain
+ * noreturn call, so the compiler drops whatever code follows k_panic()
+ * in the caller. z_fatal_error() does return when the faulting thread
+ * was already dead before the panic -- e.g. an essential thread
+ * aborting itself, where z_thread_halt() marks _current dead and then
+ * calls k_panic(), relying on the swap after it that we never reach.
+ * Swap away from the dead thread here instead of falling off the end
+ * of a noreturn function.
+ */
+static FUNC_NORETURN void z_hexagon_fatal_error_return(unsigned int reason)
+{
+	if (!arch_is_in_isr() && z_is_thread_dead(_current)) {
+		z_swap_unlocked();
+	}
+
+	k_fatal_halt(reason);
+}
+
 FUNC_NORETURN void z_hexagon_fatal_error(unsigned int reason)
 {
 	struct arch_esf esf = {0};
@@ -159,7 +179,7 @@ FUNC_NORETURN void z_hexagon_fatal_error(unsigned int reason)
 	z_hexagon_get_current_esf(&esf);
 	z_fatal_error(reason, &esf);
 
-	CODE_UNREACHABLE;
+	z_hexagon_fatal_error_return(reason);
 }
 
 FUNC_NORETURN void z_hexagon_fatal_error_ctx(unsigned int reason,
@@ -201,7 +221,7 @@ FUNC_NORETURN void z_arch_except(unsigned int reason)
 	z_hexagon_get_current_esf(&esf);
 	z_fatal_error(reason, &esf);
 
-	CODE_UNREACHABLE;
+	z_hexagon_fatal_error_return(reason);
 }
 
 FUNC_NORETURN void arch_system_halt(unsigned int reason)
