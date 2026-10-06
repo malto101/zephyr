@@ -6,7 +6,10 @@
 
 #include <zephyr/kernel.h>
 #include <kernel_internal.h>
+
+#ifdef CONFIG_THREAD_LOCAL_STORAGE
 #include <kernel_tls.h>
+#endif
 
 extern char _interrupt_stack[];
 
