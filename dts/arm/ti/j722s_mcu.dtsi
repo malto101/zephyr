@@ -7,6 +7,7 @@
 
 #include <mem.h>
 #include <freq.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
 #include <zephyr/dt-bindings/interrupt-controller/ti-vim.h>
 
 / {
@@ -34,6 +35,8 @@
 		ti,intr-trigger-type = <1>;
 		interrupt-controller;
 		#interrupt-cells = <1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 		ti,sci = <&dmsc>;
 		ti,sci-dev-id = <5>;
 		/* R5-specific ti,interrupt-ranges set in main_r5 / mcu_r5 dtsi */
@@ -56,7 +59,8 @@
 		reg = <0x04900000 0x100>;
 		interrupts = <0 197 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 		interrupt-parent = <&vim>;
-		clock-frequency = <100000>;
+		clocks = <&k3_clks 106 2>;
+		clock-frequency = <I2C_BITRATE_STANDARD>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 		status = "disabled";

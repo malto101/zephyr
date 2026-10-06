@@ -7,6 +7,7 @@
 
 #include <mem.h>
 #include <freq.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
 #include <zephyr/dt-bindings/interrupt-controller/ti-vim.h>
 
 / {
@@ -19,6 +20,11 @@
 		reg-names = "debug_messages";
 		reg = <0x44043000 0xfe0>;
 		status = "disabled";
+
+		k3_clks: clock-controller {
+			compatible = "ti,k2g-sci-clk";
+			#clock-cells = <2>;
+		};
 	};
 
 	secure_proxy_main: mailbox0@4d000000 {
@@ -37,6 +43,8 @@
 		ti,intr-trigger-type = <1>;
 		interrupt-controller;
 		#interrupt-cells = <1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 		ti,sci = <&dmsc>;
 		ti,sci-dev-id = <3>;
 		/* R5-specific ti,interrupt-ranges set in main_r5 / mcu_r5 dtsi */
@@ -307,6 +315,18 @@
 		interrupts = <0 196 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 		interrupt-parent = <&vim>;
 		clock-frequency = <100000>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "disabled";
+	};
+
+	main_i2c4: i2c@fe80000 {
+		compatible = "ti,omap-i2c";
+		reg = <0x0fe80000 0x100>;
+		interrupts = <0 239 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+		interrupt-parent = <&vim>;
+		clocks = <&k3_clks 257 2>;
+		clock-frequency = <I2C_BITRATE_STANDARD>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 		status = "disabled";
