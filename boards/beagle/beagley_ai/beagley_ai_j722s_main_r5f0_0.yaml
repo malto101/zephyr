@@ -13,5 +13,6 @@ toolchain:
   - gnuarmemb
 supported:
   - uart
+  - i2c
   - shell
 vendor: beagle

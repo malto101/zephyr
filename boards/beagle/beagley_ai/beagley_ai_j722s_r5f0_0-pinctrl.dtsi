@@ -272,4 +272,26 @@
 		/* (B25) MCASP0_AXR1.GPIO1_9 */
 		pinmux = <K3_PINMUX(0x19c, PIN_INPUT_PULLDOWN, MUX_MODE_7)>;
 	};
+
+	main_i2c4_scl_default: main-i2c4-scl-default {
+		/* (R27) GPMC0_CSn0.I2C4_SCL — HAT GPIO22 */
+		pinmux = <K3_PINMUX(0x0a8, PIN_INPUT_PULLUP, MUX_MODE_1)>;
+	};
+
+	main_i2c4_sda_default: main-i2c4-sda-default {
+		/* (P21) GPMC0_CSn1.I2C4_SDA — HAT GPIO25 */
+		pinmux = <K3_PINMUX(0x0ac, PIN_INPUT_PULLUP, MUX_MODE_1)>;
+	};
+};
+
+&mcu_pinctrl {
+	mcu_i2c0_scl_default: mcu-i2c0-scl-default {
+		/* (B13) MCU_I2C0_SCL */
+		pinmux = <K3_PINMUX(0x044, PIN_INPUT_PULLUP, MUX_MODE_0)>;
+	};
+
+	mcu_i2c0_sda_default: mcu-i2c0-sda-default {
+		/* (E11) MCU_I2C0_SDA */
+		pinmux = <K3_PINMUX(0x048, PIN_INPUT_PULLUP, MUX_MODE_0)>;
+	};
 };
