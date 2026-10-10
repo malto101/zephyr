@@ -18,6 +18,11 @@ Supported Features
 
 .. zephyr:board-supported-hw::
 
+Pinout
+******
+
+.. board-pinout:: esp32s3_devkitc
+
 System Requirements
 *******************
 

@@ -36,6 +36,11 @@ module supports 512 interrupt inputs per R5F core. Each interrupt can be either
 a level or a pulse (both active-high). The VIM has two interrupt outputs per core
 IRQ and FIQ.
 
+Pinout
+******
+
+.. board-pinout:: beagley_ai
+
 Supported Features
 ******************
 The board configuration supports a console UART via the HAT header pins. Future

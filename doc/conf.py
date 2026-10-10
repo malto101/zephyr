@@ -26,6 +26,11 @@ sys.path.insert(0, str(ZEPHYR_BASE / "scripts" / "west_commands"))
 # Add the directory which contains the pytest-twister-pytest
 sys.path.insert(0, str(ZEPHYR_BASE / "scripts" / "pylib" / "pytest-twister-harness" / "src"))
 
+# board-pinout: local dev checkout fallback (no-op when installed via pip)
+_bp_src = ZEPHYR_BASE.parents[1] / "board-pinout" / "src"
+if _bp_src.is_dir():
+    sys.path.insert(0, str(_bp_src))
+
 import redirects  # noqa: E402
 
 try:
@@ -123,6 +128,7 @@ extensions = [
     "zephyr.partial_build",
     "moderncmakedomain",
     "sphinx.ext.intersphinx",
+    "board_pinout.sphinx_ext",
 ]
 
 # Only use image conversion when it is really needed, e.g. LaTeX build.
@@ -501,6 +507,10 @@ linkcheck_anchors = False
 
 api_overview_doxygen_out_dir = str(doxyrunner_projects["zephyr"]["outdir"])
 api_overview_base_url = "https://github.com/zephyrproject-rtos/zephyr"
+
+# -- Options for board_pinout.sphinx_ext ----------------------------------
+
+board_pinout_src_root = str(ZEPHYR_BASE)
 
 
 def _set_html_permalinks_icon(_, config):

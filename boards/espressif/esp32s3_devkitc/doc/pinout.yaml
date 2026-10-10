@@ -1,0 +1,853 @@
+schema_version: '1.1'
+board: esp32s3_devkitc
+soc: esp32s3
+mux_source: soc
+software:
+  zephyr:
+    name: Zephyr
+    kind: rtos
+faces:
+  top:
+    underlay: img/esp32s3_devkitc.webp
+    children:
+      - id: j1
+        kind: pin_array
+        silk: J1
+        rows: 22
+        cols: 1
+        electrical:
+          io_voltage: 3.3
+        notes: Left pin header; Espressif J1 numbering top → bottom
+        point:
+          - 0.2726
+          - 0.4696
+        children:
+          - id: j1_01
+            kind: pin
+            silk: 3V3
+            net:
+              role: power_out
+              rail: 3V3
+              nominal_v: 3.3
+            notes: 3.3 V rail
+            point:
+              - 0.2838
+              - 0.155
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_02
+            kind: pin
+            silk: 3V3
+            net:
+              role: power_out
+              rail: 3V3
+              nominal_v: 3.3
+            notes: 3.3 V rail
+            point:
+              - 0.2838
+              - 0.1874
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_03
+            kind: pin
+            silk: RST EN
+            pad: CHIP_PU
+            notes: CHIP_PU / reset; hold low to reset
+            point:
+              - 0.2838
+              - 0.221
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_04
+            kind: pin
+            silk: '4'
+            pad: GPIO4
+            assignments:
+              - function: I2C1_SDA
+                owner: i2c1
+                role: SDA
+                status: available
+                config:
+                  pinctrl: i2c1_default
+                  compatible: espressif,esp32-i2c
+              - function: I2S1_O_WS
+                owner: i2s1
+                role: O_WS
+                status: available
+                config:
+                  pinctrl: i2s1_default
+                  compatible: espressif,esp32-i2s
+            point:
+              - 0.2838
+              - 0.2516
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_05
+            kind: pin
+            silk: '5'
+            pad: GPIO5
+            assignments:
+              - function: I2C1_SCL
+                owner: i2c1
+                role: SCL
+                status: available
+                config:
+                  pinctrl: i2c1_default
+                  compatible: espressif,esp32-i2c
+              - function: I2S1_O_BCK
+                owner: i2s1
+                role: O_BCK
+                status: available
+                config:
+                  pinctrl: i2s1_default
+                  compatible: espressif,esp32-i2s
+              - function: TWAI_TX
+                owner: twai
+                role: TX
+                status: available
+                config:
+                  pinctrl: twai_default
+                  compatible: espressif,esp32-twai
+            point:
+              - 0.2838
+              - 0.2864
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_06
+            kind: pin
+            silk: '6'
+            pad: GPIO6
+            assignments:
+              - function: I2S1_O_SD
+                owner: i2s1
+                role: O_SD
+                status: available
+                config:
+                  pinctrl: i2s1_default
+                  compatible: espressif,esp32-i2s
+              - function: TWAI_RX
+                owner: twai
+                role: RX
+                status: available
+                config:
+                  pinctrl: twai_default
+                  compatible: espressif,esp32-twai
+            point:
+              - 0.2838
+              - 0.319
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_07
+            kind: pin
+            silk: '7'
+            pad: GPIO7
+            point:
+              - 0.2838
+              - 0.3506
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_08
+            kind: pin
+            silk: '15'
+            pad: GPIO15
+            notes: May be XTAL_32K_P if external crystal used
+            point:
+              - 0.2838
+              - 0.3832
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_09
+            kind: pin
+            silk: '16'
+            pad: GPIO16
+            notes: May be XTAL_32K_N if external crystal used
+            point:
+              - 0.2838
+              - 0.4182
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_10
+            kind: pin
+            silk: '17'
+            pad: GPIO17
+            assignments:
+              - function: UART1_TX
+                owner: uart1
+                role: TX
+                status: available
+                config:
+                  pinctrl: uart1_default
+                  compatible: espressif,esp32-uart
+            notes: Zephyr uart1 TX default
+            point:
+              - 0.2838
+              - 0.4512
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_11
+            kind: pin
+            silk: '18'
+            pad: GPIO18
+            assignments:
+              - function: UART1_RX
+                owner: uart1
+                role: RX
+                status: available
+                config:
+                  pinctrl: uart1_default
+                  compatible: espressif,esp32-uart
+            notes: Zephyr uart1 RX default
+            point:
+              - 0.2838
+              - 0.4812
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_12
+            kind: pin
+            silk: '8'
+            pad: GPIO8
+            assignments:
+              - function: RMT_OUT3
+                owner: rmt
+                role: OUT3
+                status: available
+                config:
+                  pinctrl: rmt_default
+                  compatible: espressif,esp32-rmt
+            notes: Zephyr rmt TX default (RMT_OUT3)
+            point:
+              - 0.2838
+              - 0.513
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_13
+            kind: pin
+            silk: '3'
+            pad: GPIO3
+            point:
+              - 0.2838
+              - 0.5456
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_14
+            kind: pin
+            silk: '46'
+            pad: GPIO46
+            notes: Strapping pin; sample at reset — avoid accidental pulldown
+            point:
+              - 0.2838
+              - 0.5786
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_15
+            kind: pin
+            silk: '9'
+            pad: GPIO9
+            assignments:
+              - function: RMT_IN3
+                owner: rmt
+                role: IN3
+                status: available
+                config:
+                  pinctrl: rmt_default
+                  compatible: espressif,esp32-rmt
+            notes: Zephyr rmt RX default (RMT_IN3)
+            point:
+              - 0.2838
+              - 0.6128
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_16
+            kind: pin
+            silk: '10'
+            pad: GPIO10
+            assignments:
+              - function: SPIM2_CSEL
+                owner: spi2
+                role: CSEL
+                status: enabled
+                config:
+                  pinctrl: spim2_default
+                  compatible: espressif,esp32-spi
+            notes: Zephyr spi2 CS default
+            point:
+              - 0.2838
+              - 0.6484
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_17
+            kind: pin
+            silk: '11'
+            pad: GPIO11
+            assignments:
+              - function: SPIM2_MOSI
+                owner: spi2
+                role: MOSI
+                status: enabled
+                config:
+                  pinctrl: spim2_default
+                  compatible: espressif,esp32-spi
+            notes: Zephyr spi2 MOSI default
+            point:
+              - 0.2838
+              - 0.6779
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_18
+            kind: pin
+            silk: '12'
+            pad: GPIO12
+            assignments:
+              - function: SPIM2_SCLK
+                owner: spi2
+                role: SCLK
+                status: enabled
+                config:
+                  pinctrl: spim2_default
+                  compatible: espressif,esp32-spi
+              - function: I2S1_I_SD
+                owner: i2s1
+                role: I_SD
+                status: available
+                config:
+                  pinctrl: i2s1_default
+                  compatible: espressif,esp32-i2s
+            notes: Zephyr spi2 SCLK / i2s1 SD-in default
+            point:
+              - 0.2838
+              - 0.711
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_19
+            kind: pin
+            silk: '13'
+            pad: GPIO13
+            assignments:
+              - function: SPIM2_MISO
+                owner: spi2
+                role: MISO
+                status: enabled
+                config:
+                  pinctrl: spim2_default
+                  compatible: espressif,esp32-spi
+            notes: Zephyr spi2 MISO default
+            point:
+              - 0.2838
+              - 0.7422
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_20
+            kind: pin
+            silk: '14'
+            pad: GPIO14
+            assignments:
+              - function: SPIM3_CSEL
+                owner: spi3
+                role: CSEL
+                status: enabled
+                config:
+                  pinctrl: spim3_default
+                  compatible: espressif,esp32-spi
+            notes: Zephyr spi3 CS default
+            point:
+              - 0.2838
+              - 0.7762
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_21
+            kind: pin
+            silk: 5V
+            net:
+              role: power_bidir
+              rail: 5V
+              nominal_v: 5.0
+            notes: 5 V rail (USB VBUS when powered from USB)
+            point:
+              - 0.2838
+              - 0.8106
+            label_offset:
+              - -0.0367
+              - 0
+          - id: j1_22
+            kind: pin
+            silk: G
+            net:
+              role: ground
+            point:
+              - 0.2838
+              - 0.8434
+            label_offset:
+              - -0.0367
+              - 0
+        label_offset:
+          - 0.0406
+          - 0
+      - id: j3
+        kind: pin_array
+        silk: J3
+        rows: 22
+        cols: 1
+        electrical:
+          io_voltage: 3.3
+        notes: Right pin header; Espressif J3 numbering top → bottom
+        point:
+          - 0.74
+          - 0.4696
+        children:
+          - id: j3_01
+            kind: pin
+            silk: G
+            net:
+              role: ground
+            point:
+              - 0.7173
+              - 0.155
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_02
+            kind: pin
+            silk: TX
+            pad: GPIO43
+            assignments:
+              - function: UART0_TX
+                owner: uart0
+                role: TX
+                status: enabled
+                config:
+                  pinctrl: uart0_default
+                  compatible: espressif,esp32-uart
+            notes: U0TXD; Zephyr uart0 / console TX
+            point:
+              - 0.7173
+              - 0.1874
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_03
+            kind: pin
+            silk: RX
+            pad: GPIO44
+            assignments:
+              - function: UART0_RX
+                owner: uart0
+                role: RX
+                status: enabled
+                config:
+                  pinctrl: uart0_default
+                  compatible: espressif,esp32-uart
+            notes: U0RXD; Zephyr uart0 / console RX
+            point:
+              - 0.7173
+              - 0.221
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_04
+            kind: pin
+            silk: '1'
+            pad: GPIO1
+            assignments:
+              - function: I2C0_SDA
+                owner: i2c0
+                role: SDA
+                status: available
+                config:
+                  pinctrl: i2c0_default
+                  compatible: espressif,esp32-i2c
+            notes: Zephyr i2c0 SDA default
+            point:
+              - 0.7173
+              - 0.2516
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_05
+            kind: pin
+            silk: '2'
+            pad: GPIO2
+            assignments:
+              - function: I2C0_SCL
+                owner: i2c0
+                role: SCL
+                status: available
+                config:
+                  pinctrl: i2c0_default
+                  compatible: espressif,esp32-i2c
+            notes: Zephyr i2c0 SCL default
+            point:
+              - 0.7173
+              - 0.2864
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_06
+            kind: pin
+            silk: '42'
+            pad: GPIO42
+            assignments:
+              - function: I2S0_MCLK
+                owner: i2s0
+                role: MCLK
+                status: available
+                config:
+                  pinctrl: i2s0_default
+                  compatible: espressif,esp32-i2s
+            notes: JTAG MTMS; Zephyr i2s0 MCLK default
+            point:
+              - 0.7173
+              - 0.319
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_07
+            kind: pin
+            silk: '41'
+            pad: GPIO41
+            assignments:
+              - function: I2S0_I_SD
+                owner: i2s0
+                role: I_SD
+                status: available
+                config:
+                  pinctrl: i2s0_default
+                  compatible: espressif,esp32-i2s
+              - function: SPIM3_MOSI
+                owner: spi3
+                role: MOSI
+                status: enabled
+                config:
+                  pinctrl: spim3_default
+                  compatible: espressif,esp32-spi
+            notes: JTAG MTDI; Zephyr i2s0 SD-in / spi3 MOSI
+            point:
+              - 0.7173
+              - 0.3506
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_08
+            kind: pin
+            silk: '40'
+            pad: GPIO40
+            assignments:
+              - function: SPIM3_MISO
+                owner: spi3
+                role: MISO
+                status: enabled
+                config:
+                  pinctrl: spim3_default
+                  compatible: espressif,esp32-spi
+            notes: JTAG MTDO; Zephyr spi3 MISO default
+            point:
+              - 0.7173
+              - 0.3832
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_09
+            kind: pin
+            silk: '39'
+            pad: GPIO39
+            notes: JTAG MTCK
+            point:
+              - 0.7173
+              - 0.4182
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_10
+            kind: pin
+            silk: '38'
+            pad: GPIO38
+            assignments:
+              - function: I2S0_O_SD
+                owner: i2s0
+                role: O_SD
+                status: available
+                config:
+                  pinctrl: i2s0_default
+                  compatible: espressif,esp32-i2s
+            mux_policy: extend
+            mux:
+              - function: RGB_LED
+                peripheral: led_strip
+                signal: DIN
+            notes: >-
+              RGB LED on DevKitC-1 v1.1; this underlay silk is RGB@IO48 (rev 1.0). Zephyr i2s0
+              SD-out default
+            point:
+              - 0.7173
+              - 0.4512
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_11
+            kind: pin
+            silk: '37'
+            pad: GPIO37
+            assignments:
+              - function: I2S0_O_BCK
+                owner: i2s0
+                role: O_BCK
+                status: available
+                config:
+                  pinctrl: i2s0_default
+                  compatible: espressif,esp32-i2s
+            notes: Used for octal SPI flash/PSRAM on N8R8 / WROOM-2 modules — not for external use
+            point:
+              - 0.7173
+              - 0.4812
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_12
+            kind: pin
+            silk: '36'
+            pad: GPIO36
+            assignments:
+              - function: I2S0_O_WS
+                owner: i2s0
+                role: O_WS
+                status: available
+                config:
+                  pinctrl: i2s0_default
+                  compatible: espressif,esp32-i2s
+            notes: Used for octal SPI flash/PSRAM on N8R8 / WROOM-2 modules — not for external use
+            point:
+              - 0.7173
+              - 0.513
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_13
+            kind: pin
+            silk: '35'
+            pad: GPIO35
+            notes: Used for octal SPI flash/PSRAM on N8R8 / WROOM-2 modules — not for external use
+            point:
+              - 0.7173
+              - 0.5456
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_14
+            kind: pin
+            silk: '0'
+            pad: GPIO0
+            mux_policy: extend
+            mux:
+              - function: GPIO_BOOT
+                peripheral: button0
+                signal: IN
+            notes: BOOT button (active low); strapping pin
+            point:
+              - 0.7173
+              - 0.5786
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_15
+            kind: pin
+            silk: '45'
+            pad: GPIO45
+            notes: Strapping pin; sample at reset
+            point:
+              - 0.7173
+              - 0.6128
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_16
+            kind: pin
+            silk: '48'
+            pad: GPIO48
+            assignments:
+              - function: I2S1_MCLK
+                owner: i2s1
+                role: MCLK
+                status: available
+                config:
+                  pinctrl: i2s1_default
+                  compatible: espressif,esp32-i2s
+            mux_policy: extend
+            mux:
+              - function: RGB_LED
+                peripheral: led_strip
+                signal: DIN
+            notes: RGB LED on this underlay (RGB@IO48 / rev 1.0). Zephyr i2s1 MCLK default
+            point:
+              - 0.7173
+              - 0.6484
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_17
+            kind: pin
+            silk: '47'
+            pad: GPIO47
+            point:
+              - 0.7173
+              - 0.6779
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_18
+            kind: pin
+            silk: '21'
+            pad: GPIO21
+            assignments:
+              - function: SPIM3_SCLK
+                owner: spi3
+                role: SCLK
+                status: enabled
+                config:
+                  pinctrl: spim3_default
+                  compatible: espressif,esp32-spi
+            notes: Zephyr spi3 SCLK default; avoid heavy load if using Wi-Fi TX
+            point:
+              - 0.7173
+              - 0.711
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_19
+            kind: pin
+            silk: '20'
+            pad: GPIO20
+            notes: USB_D+ (native USB); also ADC2_CH9 / U1CTS
+            point:
+              - 0.7173
+              - 0.7422
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_20
+            kind: pin
+            silk: '19'
+            pad: GPIO19
+            notes: USB_D- (native USB); also ADC2_CH8 / U1RTS
+            point:
+              - 0.7173
+              - 0.7762
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_21
+            kind: pin
+            silk: G
+            net:
+              role: ground
+            point:
+              - 0.7173
+              - 0.8106
+            label_offset:
+              - 0.0362
+              - 0
+          - id: j3_22
+            kind: pin
+            silk: G
+            net:
+              role: ground
+            point:
+              - 0.7173
+              - 0.8434
+            label_offset:
+              - 0.0362
+              - 0
+        label_offset:
+          - -0.0525
+          - 0
+      - id: buttons
+        kind: group
+        silk: BUTTONS
+        point:
+          - 0.4997
+          - 0.7653
+        children:
+          - id: button_boot
+            ref: tactile_button
+            silk: BOOT
+            pad: GPIO0
+            point:
+              - 0.4019
+              - 0.7694
+            mux_policy: extend
+            mux:
+              - function: GPIO_BOOT
+                peripheral: button0
+                signal: IN
+            notes: Download / BOOT; hold + RESET for serial download mode
+            label_offset:
+              - 0
+              - -0.0373
+          - id: button_reset
+            ref: tactile_button
+            silk: RESET
+            pad: CHIP_PU
+            point:
+              - 0.6004
+              - 0.7694
+            notes: Board reset (CHIP_PU)
+            label_offset:
+              - 0
+              - -0.0373
+        label_offset:
+          - 0
+          - 0.0109
+      - id: rgb_led
+        kind: pin
+        silk: RGB@IO48
+        pad: GPIO48
+        point:
+          - 0.4019
+          - 0.5715
+        mux_policy: extend
+        mux:
+          - function: RGB_LED
+            peripheral: led_strip
+            signal: DIN
+        notes: Addressable RGB; underlay silk IO48 (rev 1.0). Rev 1.1 boards use GPIO38.
+        label_offset:
+          - 0.034
+          - 0
+      - id: usb_uart
+        ref: usb_c
+        silk: UART
+        point:
+          - 0.3723
+          - 0.9005
+        notes: USB-to-UART bridge (console / flash); powers board
+        label_offset:
+          - 0
+          - 0.035
+      - id: usb_otg
+        ref: usb_c
+        silk: USB
+        point:
+          - 0.6313
+          - 0.9005
+        notes: ESP32-S3 native USB OTG / JTAG (GPIO19/20)
+        label_offset:
+          - 0
+          - 0.035
