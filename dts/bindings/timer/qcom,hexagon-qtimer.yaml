@@ -1,0 +1,24 @@
+# Copyright (c) 2026 Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+description: Qualcomm Hexagon QTimer
+
+compatible: "qcom,hexagon-qtimer"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  reg-names:
+    type: string-array
+    required: true
+    description: Register blocks are named "ac" and "frame".
+
+  interrupts:
+    required: true
+
+  clock-frequency:
+    type: int
+    required: true

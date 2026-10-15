@@ -13,7 +13,9 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/fatal.h>
 #include <kswap.h>
+#if defined(CONFIG_HEXAGON_HVM_GUEST)
 #include <hexagon_vm.h>
+#endif
 #include <hexagon_fatal.h>
 
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
@@ -227,7 +229,11 @@ FUNC_NORETURN void z_arch_except(unsigned int reason)
 FUNC_NORETURN void arch_system_halt(unsigned int reason)
 {
 	ARG_UNUSED(reason);
+#if defined(CONFIG_HEXAGON_HVM_GUEST)
 	hexagon_vm_stop(VM_STOP_HALT);
+#else
+	__asm__ volatile("wait(r0)" : : "r"(0));
+#endif
 
 	while (1) {
 	}

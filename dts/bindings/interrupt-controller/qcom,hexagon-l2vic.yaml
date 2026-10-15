@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+description: Qualcomm Hexagon L2 virtual interrupt controller
+
+compatible: "qcom,hexagon-l2vic"
+
+include: [base.yaml, interrupt-controller.yaml]
+
+properties:
+  reg:
+    required: true
+
+  interrupt-controller:
+    required: true
+
+  "#interrupt-cells":
+    const: 1
+
+interrupt-cells:
+  - irq

@@ -10,6 +10,10 @@
 #include <zephyr/irq.h>
 #include <zephyr/sw_isr_table.h>
 
+#if defined(CONFIG_HEXAGON_HVM_GUEST)
+#include <hexagon_vm.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,18 +34,8 @@ extern "C" {
 
 #ifndef _ASMLANGUAGE
 
-/*
- * Interrupt lock/unlock via HVM trap1 calls (vmsetie/vmgetie).
- *
- * vmsetie (trap1 #3) sets the interrupt-enable flag and returns the
- * previous value in r0.  vmgetie (trap1 #4) returns the current value.
- * With CCR.GRE set these are fast virtual instructions handled inline
- * by the CPU.
- *
- * Following the same pattern as the Linux kernel:
- *   arch_irq_lock   -> vmsetie(VM_INT_DISABLE)  returns old IE
- *   arch_irq_unlock -> vmsetie(key)              restores old IE
- */
+#if defined(CONFIG_HEXAGON_HVM_GUEST)
+/* Interrupt lock/unlock through the H2 vmsetie/vmgetie calls. */
 static ALWAYS_INLINE unsigned int arch_irq_lock(void)
 {
 	return hexagon_vm_setie(VM_INT_DISABLE);
@@ -54,13 +48,74 @@ static ALWAYS_INLINE void arch_irq_unlock(unsigned int key)
 
 static ALWAYS_INLINE bool arch_irq_unlocked(unsigned int key)
 {
-	return key != 0;
+	return key != 0U;
 }
 
 static ALWAYS_INLINE bool arch_cpu_irqs_are_enabled(void)
 {
 	return hexagon_vm_getie() != VM_INT_DISABLE;
 }
+#else
+/* Native Hexagon stores the interrupt-enable state in SSR bit 18. */
+#define HEXAGON_SSR_IE BIT(18)
+
+static ALWAYS_INLINE unsigned int hexagon_native_ssr_read(void)
+{
+	unsigned int ssr;
+
+	__asm__ volatile("%0 = ssr" : "=r"(ssr));
+	return ssr;
+}
+
+static ALWAYS_INLINE void hexagon_native_ssr_write(unsigned int ssr)
+{
+	__asm__ volatile("ssr = %0\n\tisync" : : "r"(ssr));
+}
+
+static ALWAYS_INLINE unsigned int arch_irq_lock(void)
+{
+	unsigned int ssr = hexagon_native_ssr_read();
+
+	hexagon_native_ssr_write(ssr & ~HEXAGON_SSR_IE);
+	return ssr;
+}
+
+static ALWAYS_INLINE void arch_irq_unlock(unsigned int key)
+{
+	hexagon_native_ssr_write(key);
+}
+
+static ALWAYS_INLINE bool arch_irq_unlocked(unsigned int key)
+{
+	return (key & HEXAGON_SSR_IE) != 0U;
+}
+
+static ALWAYS_INLINE bool arch_cpu_irqs_are_enabled(void)
+{
+	return (hexagon_native_ssr_read() & HEXAGON_SSR_IE) != 0U;
+}
+
+static ALWAYS_INLINE void hexagon_native_irq_enable(void)
+{
+	unsigned int ssr = hexagon_native_ssr_read();
+
+	hexagon_native_ssr_write(ssr | HEXAGON_SSR_IE);
+}
+
+static ALWAYS_INLINE void hexagon_native_irq_disable(void)
+{
+	unsigned int ssr = hexagon_native_ssr_read();
+
+	hexagon_native_ssr_write(ssr & ~HEXAGON_SSR_IE);
+}
+
+static ALWAYS_INLINE void hexagon_native_irq_sync(void)
+{
+	__asm__ volatile("isync");
+}
+
+void z_hexagon_native_interrupt_dispatch(void);
+#endif
 
 /* Enable specific IRQ */
 void arch_irq_enable(unsigned int irq);
@@ -82,10 +137,10 @@ int arch_irq_connect_dynamic(unsigned int irq, unsigned int priority,
 void hexagon_irq_priority_set(unsigned int irq, unsigned int priority);
 int hexagon_irq_trigger(unsigned int irq);
 
+#endif /* _ASMLANGUAGE */
+
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* _ASMLANGUAGE */
 
 #endif /* ZEPHYR_ARCH_HEXAGON_INCLUDE_IRQ_H_ */

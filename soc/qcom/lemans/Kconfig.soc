@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+
+config SOC_LEMANS_CDSP0
+	bool
+	select HEXAGON
+	select GEN_ISR_TABLES
+
+config SOC
+	default "lemans_cdsp0" if SOC_LEMANS_CDSP0
+
+config LEMANS_SMP2P
+	bool "Lemans CDSP SMP2P lifecycle handshake"
+	depends on SOC_LEMANS_CDSP0 && HEXAGON_NATIVE
+	default n
+	help
+	  Publish the CDSP-to-APPS SMP2P lifecycle through the Lemans SMEM
+	  and IPCC interfaces. Enable this only in a protocol profile after
+	  the deployed SMEM ownership and Linux handshake are validated.
+	  The reset/C-start profile deliberately leaves this disabled.
+

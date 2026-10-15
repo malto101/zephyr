@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+
+board:
+  name: lemans_cdsp0
+  full_name: Lemans CDSP0
+  vendor: qcom
+  socs:
+    - name: lemans_cdsp0

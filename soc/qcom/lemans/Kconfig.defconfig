@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+
+if SOC_LEMANS_CDSP0
+
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	default 19200000
+
+config NUM_IRQS
+	default 256
+
+config SMP
+	default n
+
+config USERSPACE
+	default n
+
+endif # SOC_LEMANS_CDSP0

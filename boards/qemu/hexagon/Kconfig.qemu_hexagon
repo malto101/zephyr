@@ -3,3 +3,5 @@
 
 config BOARD_QEMU_HEXAGON
 	select SOC_QEMU_HEXAGON_VIRT
+
+# The QEMU board uses the default H2 guest execution mode.

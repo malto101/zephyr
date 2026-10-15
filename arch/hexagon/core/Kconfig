@@ -1,6 +1,30 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 
+choice HEXAGON_EXECUTION_MODE
+	prompt "Hexagon execution environment"
+	default HEXAGON_NATIVE if SOC_LEMANS_CDSP0
+	default HEXAGON_HVM_GUEST
+	help
+	  Select whether Hexagon runs as an H2 virtual-machine guest or directly
+	  in native supervisor mode.
+
+config HEXAGON_HVM_GUEST
+	bool "H2 hypervisor guest"
+	help
+	  Run Zephyr as a guest under the H2 Hexagon virtual machine. This is the
+	  execution mode used by the QEMU Hexagon board.
+
+config HEXAGON_NATIVE
+	bool "Native supervisor mode"
+	select ARCH_HAS_SINGLE_THREAD_SUPPORT
+	help
+	  Run Zephyr directly on a Hexagon subsystem without the H2 hypervisor.
+	  Native targets provide their own reset, interrupt, timer, and memory
+	  management backends.
+
+endchoice
+
 config TEST_EXTRA_STACK_SIZE
 	default 2048
 

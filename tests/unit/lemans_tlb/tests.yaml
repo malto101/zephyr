@@ -1,0 +1,10 @@
+tests:
+  soc.qcom.lemans.tlb:
+    tags:
+      - unit
+      - qcom
+      - lemans
+    type: unit
+    extra_args: M64_MODE=1
+    integration_platforms:
+      - unit_testing

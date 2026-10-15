@@ -3,8 +3,8 @@
 
 config HEXAGON_TIMER
 	bool "Hexagon VM timer driver"
-	depends on HEXAGON
-	default y
+	depends on HEXAGON && HEXAGON_HVM_GUEST
+	default y if HEXAGON_HVM_GUEST
 	select TICKLESS_CAPABLE
 	select TIMER_HAS_64BIT_CYCLE_COUNTER
 	select TIMER_READS_ITS_FREQUENCY_AT_RUNTIME
@@ -14,6 +14,17 @@ config HEXAGON_TIMER
 	  through the H2 vmtimerop interface and drives the tick accounting with
 	  the generic system-timer core. Its counter rate is queried from the
 	  hypervisor at boot.
+
+config HEXAGON_QTIMER
+	bool "Native Hexagon QTimer driver"
+	depends on HEXAGON && HEXAGON_NATIVE && SOC_LEMANS_CDSP0
+	default n
+	select TICKLESS_CAPABLE
+	select TIMER_HAS_64BIT_CYCLE_COUNTER
+	help
+	  Enable the native Lemans QTimer backend. Keep this disabled for
+	  reset/C-start validation until the native event and L2VIC paths are
+	  proven on the target.
 
 if HEXAGON_TIMER
 
@@ -33,3 +44,11 @@ config HEXAGON_TIMER_PRIORITY
 	  Lower values indicate higher priority.
 
 endif # HEXAGON_TIMER
+
+if HEXAGON_QTIMER
+
+config HEXAGON_QTIMER_IRQ_PRIORITY
+	int "Native QTimer interrupt priority"
+	default 0
+
+endif # HEXAGON_QTIMER

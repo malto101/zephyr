@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+
+identifier: lemans_cdsp0
+name: Lemans CDSP0
+vendor: qcom
+arch: hexagon
+toolchain:
+  - hexagon
+supported:
+  - ram
+ram: 30720

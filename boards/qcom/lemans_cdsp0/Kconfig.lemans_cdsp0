@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+
+config BOARD_LEMANS_CDSP0
+	default y
+	select SOC_LEMANS_CDSP0

@@ -46,11 +46,25 @@ endif()
 # With --no-default-config, the clang driver no longer injects the picolibc
 # library path.  Add it explicitly so -lc resolves to the baremetal picolibc.
 if(DEFINED LLVM_TOOLCHAIN_PATH)
-  file(GLOB _hex_picolibc_dir
-    "${LLVM_TOOLCHAIN_PATH}/target/picolibc/hexagon-unknown-none-elf/lib/*/G0"
+  set(_hex_picolibc_root
+    "${LLVM_TOOLCHAIN_PATH}/target/picolibc/hexagon-unknown-none-elf/lib"
   )
-  if(_hex_picolibc_dir)
-    list(GET _hex_picolibc_dir 0 _hex_picolibc_dir)
+
+  if(CONFIG_SOC_LEMANS_CDSP0)
+    # Lemans CDSP0 is a v73 target.  Keep the compiler, linker, compiler-rt,
+    # and picolibc multilib on the same ISA rather than relying on glob order.
+    set(_hex_picolibc_dir "${_hex_picolibc_root}/v73/G0")
+    if(NOT IS_DIRECTORY "${_hex_picolibc_dir}")
+      message(FATAL_ERROR
+        "Lemans CDSP0 requires the Hexagon v73/G0 picolibc multilib: "
+        "${_hex_picolibc_dir}")
+    endif()
     zephyr_link_libraries(-L${_hex_picolibc_dir})
+  else()
+    file(GLOB _hex_picolibc_dir "${_hex_picolibc_root}/*/G0")
+    if(_hex_picolibc_dir)
+      list(GET _hex_picolibc_dir 0 _hex_picolibc_dir)
+      zephyr_link_libraries(-L${_hex_picolibc_dir})
+    endif()
   endif()
 endif()

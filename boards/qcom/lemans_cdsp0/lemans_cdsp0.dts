@@ -1,0 +1,92 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+/ {
+	model = "Qualcomm Lemans IQ-9075 CDSP0";
+	compatible = "qcom,lemans-cdsp0";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			compatible = "qcom,hexagon-v73";
+			reg = <0>;
+			clock-frequency = <19200000>;
+			status = "okay";
+		};
+	};
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &sram0;
+	};
+
+	soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		qdsp6ss: syscon@26380000 {
+			reg = <0x26380000 0x1000>;
+		};
+
+		tcsr: syscon@1f00000 {
+			/* Includes the Lemans SMEM WONCE registers at +0xd4000. */
+			reg = <0x01f00000 0x000d5008>;
+		};
+
+		l2vic: interrupt-controller@26390000 {
+			compatible = "qcom,hexagon-l2vic";
+			reg = <0x26390000 0x1000>;
+			interrupt-controller;
+			#interrupt-cells = <1>;
+		};
+
+		qtimer: timer@263a0000 {
+			compatible = "qcom,hexagon-qtimer";
+			reg = <0x263a0000 0x44>, <0x263a1000 0x30>;
+			reg-names = "ac", "frame";
+			interrupts = <2>;
+			interrupt-parent = <&l2vic>;
+			clock-frequency = <19200000>;
+			status = "okay";
+		};
+
+		wdog: watchdog@26384000 {
+			compatible = "qcom,q6ss-watchdog";
+			reg = <0x26384000 0x10>;
+			interrupts = <58>;
+			interrupt-parent = <&l2vic>;
+			status = "okay";
+		};
+
+		ipcc: mailbox@400000 {
+			compatible = "qcom,lemans-ipcc";
+			reg = <0x00400000 0x40000>;
+			interrupts = <30>;
+			interrupt-parent = <&l2vic>;
+			status = "okay";
+		};
+	};
+
+	sram0: memory@9b500000 {
+		device_type = "memory";
+		compatible = "mmio-sram";
+		reg = <0x9b500000 0x01e00000>;
+	};
+
+	smem: memory@90900000 {
+		device_type = "memory";
+		reg = <0x90900000 0x00200000>;
+		status = "disabled";
+	};
+};

@@ -17,6 +17,8 @@ void hexagon_intc_enable(uint32_t irq);
 void hexagon_intc_disable(uint32_t irq);
 void hexagon_intc_set_priority(uint32_t irq, uint32_t priority);
 void hexagon_intc_init(void);
+uint32_t hexagon_intc_status(uint32_t word);
+uint32_t hexagon_intc_enable_status(uint32_t word);
 
 /* Fatal error handler (fatal.c) */
 FUNC_NORETURN void z_hexagon_fatal_error(unsigned int reason);
