@@ -19,4 +19,5 @@ common:
     regex:
       - "PROJECT EXECUTION SUCCESSFUL"
 tests:
-  benchmark.posix.threads: {}
+  benchmark.posix.threads:
+    timeout: 120

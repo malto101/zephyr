@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdio.h>
 
@@ -73,7 +74,8 @@ static void create_join_common(const char *tag, create_fn create, join_fn join)
 		/* spawn thread i */
 		prev_counters[i] = 0;
 		ret = create(i);
-		__ASSERT(ret == 0, "%s_create(%d)[%zu] failed: %d", tag, i, counters[i], ret);
+		__ASSERT(ret == 0, "%s_create(%d)[" PRIu64 "] failed: %d", tag, i,
+			 counters[i], ret);
 	}
 
 	do {
@@ -85,8 +87,8 @@ static void create_join_common(const char *tag, create_fn create, join_fn join)
 		for (i = 0; i < NUM_CPUS; ++i) {
 			if (alive[i]) {
 				ret = join(i);
-				__ASSERT(ret, "%s_join(%d)[%zu] failed: %d", tag, i, counters[i],
-					 ret);
+				__ASSERT(ret == 0, "%s_join(%d)[" PRIu64 "] failed: %d", tag, i,
+					 counters[i], ret);
 				alive[i] = false;
 
 				/* update counter i after each (create,join) pair */
@@ -99,7 +101,7 @@ static void create_join_common(const char *tag, create_fn create, join_fn join)
 
 				/* re-spawn thread i */
 				ret = create(i);
-				__ASSERT(ret == 0, "%s_create(%d)[%zu] failed: %d", tag, i,
+				__ASSERT(ret == 0, "%s_create(%d)[" PRIu64 "] failed: %d", tag, i,
 					 counters[i], ret);
 			}
 		}
