@@ -78,11 +78,11 @@ void tm_message_processing_initialize(void)
 	/* Create thread 0 at priority 10.  */
 	tm_thread_create(0, 10, tm_message_processing_thread_0_entry);
 
-	/* Resume thread 0.  */
-	tm_thread_resume(0);
-
 	/* Create a queue for the message passing.  */
 	tm_queue_create(0);
+
+	/* Resume thread 0.  */
+	tm_thread_resume(0);
 
 	tm_message_processing_thread_report();
 }
