@@ -42,37 +42,51 @@ tests:
       - CONFIG_TM_BASIC=y
 
   benchmark.thread_metric.cooperative:
+    extra_args:
+      - platform:qemu_hexagon/qemu_hexagon_virt:EXTRA_CFLAGS=-DTM_TEST_DURATION=1
     extra_configs:
       - CONFIG_TM_COOPERATIVE=y
       - platform:qemu_hexagon/qemu_hexagon_virt:CONFIG_QEMU_ICOUNT_SLEEP=n
 
   benchmark.thread_metric.interrupt:
     min_ram: 24
+    extra_args:
+      - platform:qemu_hexagon/qemu_hexagon_virt:EXTRA_CFLAGS=-DTM_TEST_DURATION=1
     extra_configs:
       - CONFIG_TM_INTERRUPT=y
       - platform:qemu_hexagon/qemu_hexagon_virt:CONFIG_QEMU_ICOUNT_SLEEP=n
 
   benchmark.thread_metric.interrupt_preemption:
+    extra_args:
+      - platform:qemu_hexagon/qemu_hexagon_virt:EXTRA_CFLAGS=-DTM_TEST_DURATION=1
     extra_configs:
       - CONFIG_TM_INTERRUPT_PREEMPTION=y
       - platform:qemu_hexagon/qemu_hexagon_virt:CONFIG_QEMU_ICOUNT_SLEEP=n
 
   benchmark.thread_metric.memory_allocation:
+    extra_args:
+      - platform:qemu_hexagon/qemu_hexagon_virt:EXTRA_CFLAGS=-DTM_TEST_DURATION=1
     extra_configs:
       - CONFIG_TM_MEMORY_ALLOCATION=y
       - platform:qemu_hexagon/qemu_hexagon_virt:CONFIG_QEMU_ICOUNT_SLEEP=n
 
   benchmark.thread_metric.message:
+    extra_args:
+      - platform:qemu_hexagon/qemu_hexagon_virt:EXTRA_CFLAGS=-DTM_TEST_DURATION=1
     extra_configs:
       - CONFIG_TM_MESSAGE=y
       - platform:qemu_hexagon/qemu_hexagon_virt:CONFIG_QEMU_ICOUNT_SLEEP=n
 
   benchmark.thread_metric.preemptive:
+    extra_args:
+      - platform:qemu_hexagon/qemu_hexagon_virt:EXTRA_CFLAGS=-DTM_TEST_DURATION=1
     extra_configs:
       - CONFIG_TM_PREEMPTIVE=y
       - platform:qemu_hexagon/qemu_hexagon_virt:CONFIG_QEMU_ICOUNT_SLEEP=n
 
   benchmark.thread_metric.synchronization:
+    extra_args:
+      - platform:qemu_hexagon/qemu_hexagon_virt:EXTRA_CFLAGS=-DTM_TEST_DURATION=1
     extra_configs:
       - CONFIG_TM_SYNCHRONIZATION=y
       - platform:qemu_hexagon/qemu_hexagon_virt:CONFIG_QEMU_ICOUNT_SLEEP=n
