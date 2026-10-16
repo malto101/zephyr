@@ -72,7 +72,7 @@ static int cmd_feed(const struct shell *sh, size_t argc, char **argv)
 	int ret = task_wdt_feed(atoi(argv[1]));
 
 	if (ret < 0) {
-		shell_fprintf(sh, SHELL_ERROR, "Failed to add task watchdog channel: %d\n", ret);
+		shell_fprintf(sh, SHELL_ERROR, "Failed to feed task watchdog channel: %d\n", ret);
 		return ret;
 	}
 
