@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${HEXNEXT_QEMU_BIN:?HEXNEXT_QEMU_BIN must name the hex-next QEMU binary}"
+: "${HEXNEXT_WRAPPER_CACHE:?HEXNEXT_WRAPPER_CACHE must name the ELF cache directory}"
+mkdir -p "$HEXNEXT_WRAPPER_CACHE"
+
+args=()
+args_in=("$@")
+for ((i=0; i<${#args_in[@]}; i++)); do
+  arg=${args_in[$i]}
+  if [[ "$arg" == -device && $((i+1)) -lt ${#args_in[@]} && "${args_in[$((i+1))]}" == loader,file=* ]]; then
+    arg=${args_in[$((i+1))]}
+    i=$((i+1))
+  fi
+  if [[ "$arg" == loader,file=* ]]; then
+    elf=${arg#loader,file=}
+    if [[ "$elf" == *.elf && -f "$elf" ]]; then
+      key=$(sha256sum "$elf" | cut -d' ' -f1)
+      out="$HEXNEXT_WRAPPER_CACHE/${key}.zero.elf"
+      if [[ ! -f "$out" || "$out" -ot "$elf" ]]; then
+        python3 - "$elf" "$out" <<'PY'
+import os
+import struct
+import sys
+import tempfile
+
+src, dst = sys.argv[1:]
+with open(src, 'rb') as stream:
+    data = bytearray(stream.read())
+if data[:4] != b'\x7fELF' or data[4] != 1 or data[5] != 1:
+    raise SystemExit(f'unsupported ELF: {src}')
+def u16(offset): return struct.unpack_from('<H', data, offset)[0]
+def u32(offset): return struct.unpack_from('<I', data, offset)[0]
+struct.pack_into('<I', data, 24, (u32(24) - 0xa0000000) & 0xffffffff)
+phoff, entsz, phnum = u32(28), u16(42), u16(44)
+for index in range(phnum):
+    offset = phoff + index * entsz
+    if u32(offset) == 1:
+        for field in (8, 12):
+            address_offset = offset + field
+            struct.pack_into('<I', data, address_offset,
+                             (u32(address_offset) - 0xa0000000) & 0xffffffff)
+fd, temporary = tempfile.mkstemp(dir=os.path.dirname(dst))
+try:
+    with os.fdopen(fd, 'wb') as stream:
+        stream.write(data)
+    os.replace(temporary, dst)
+except BaseException:
+    os.unlink(temporary)
+    raise
+PY
+      fi
+      args+=("-kernel" "$out")
+      continue
+    fi
+  fi
+  args+=("$arg")
+done
+
+exec "$HEXNEXT_QEMU_BIN" "${args[@]}"
