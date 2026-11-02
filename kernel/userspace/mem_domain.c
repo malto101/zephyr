@@ -142,9 +142,11 @@ int k_mem_domain_init(struct k_mem_domain *domain, uint8_t num_parts,
 #ifdef CONFIG_ARCH_MEM_DOMAIN_SYNCHRONOUS_API
 			int ret2 = arch_mem_domain_partition_add(domain, i);
 
-			ARG_UNUSED(ret2);
-			CHECKIF(ret2 != 0) {
+			if (ret2 != 0) {
+				domain->partitions[i].size = 0U;
+				domain->num_partitions--;
 				ret = ret2;
+				goto unlock_out;
 			}
 #endif /* CONFIG_ARCH_MEM_DOMAIN_SYNCHRONOUS_API */
 		}
@@ -248,6 +250,10 @@ int k_mem_domain_add_partition(struct k_mem_domain *domain,
 
 #ifdef CONFIG_ARCH_MEM_DOMAIN_SYNCHRONOUS_API
 	ret = arch_mem_domain_partition_add(domain, p_idx);
+	if (ret != 0) {
+		domain->partitions[p_idx].size = 0U;
+		domain->num_partitions--;
+	}
 #endif /* CONFIG_ARCH_MEM_DOMAIN_SYNCHRONOUS_API */
 
 unlock_out:
