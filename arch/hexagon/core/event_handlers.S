@@ -64,9 +64,6 @@ GTEXT(z_hexagon_enhanced_interrupt)
 GTEXT(z_hexagon_event_handler)
 GTEXT(z_get_next_switch_handle)
 GTEXT(z_hexagon_arch_switch)
-#ifdef CONFIG_HW_STACK_PROTECTION
-GTEXT(z_hexagon_event_exit_stack_protect)
-#endif
 #ifdef CONFIG_USERSPACE
 GTEXT(z_hexagon_event_exit_user_sync)
 #endif
@@ -233,13 +230,6 @@ GDATA(_kernel)
 		r1 = add(r5, #___thread_t_switch_handle_OFFSET)
 		call ##z_hexagon_arch_switch
 	}
-
-#ifdef CONFIG_HW_STACK_PROTECTION
-	/* Update FRAMELIMIT for the newly scheduled thread */
-	{
-		call ##z_hexagon_event_exit_stack_protect
-	}
-#endif
 
 _event_no_switch_\event_id:
 #endif /* CONFIG_MULTITHREADING */
