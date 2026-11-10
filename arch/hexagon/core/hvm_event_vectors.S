@@ -228,15 +228,14 @@ _pte_loop:
 	} :endloop0
 
 _page_table_done:
-	/* Map PL011 UART device at 0x10000000 (PDE byte offset 0x100).
-	 * The shared bit bypasses H2's guestmap translation so the
-	 * guest physical address is used directly as the host address.
-	 * U is set as with the RAM mapping above: trap0 dispatch (e.g.
-	 * uart_poll_out()) runs at USER tier and needs it to access this page.
+	/* Map PL011 UART device. The shared bit bypasses H2's guestmap
+	 * translation so the guest physical address is used directly as the
+	 * host address. U is set as with the RAM mapping above: trap0 dispatch
+	 * (e.g. uart_poll_out()) runs at USER tier and needs this page.
 	 */
-	r0 = add(r5, #0x100)
-	r1.h = #0x1000
-	r1.l = #0x0000
+	r0 = add(r5, #HVM_UART_PDE_OFFSET)
+	r1.h = #(HVM_UART_PDE_BASE >> 16)
+	r1.l = #(HVM_UART_PDE_BASE & 0xffff)
 	r2 = #(__HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_U | __HVM_PTE_SHARED)
 	r3 = #(__HEXAGON_C_DEV << 6)
 	r2 = or(r2, r3)

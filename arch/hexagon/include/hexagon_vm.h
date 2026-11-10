@@ -16,6 +16,12 @@
  * Specification and is stable across H2 versions.
  */
 
+#include <zephyr/devicetree.h>
+
+#define HVM_UART_BASE       DT_REG_ADDR(DT_CHOSEN(zephyr_console))
+#define HVM_UART_PDE_BASE   (HVM_UART_BASE & 0xffc00000)
+#define HVM_UART_PDE_OFFSET ((HVM_UART_BASE >> 22) << 2)
+
 #define HEXAGON_VM_vmversion   0
 #define HEXAGON_VM_vmrte       1
 #define HEXAGON_VM_vmsetvec    2

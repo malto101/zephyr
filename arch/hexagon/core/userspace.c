@@ -574,7 +574,8 @@ static int hexagon_fixed_tail_init(void)
 					 __HVM_LINEAR_R | __HVM_LINEAR_W,
 					 __HEXAGON_C_WB_L2);
 
-	hexagon_linear_entry_set(&hexagon_fixed_tail[idx], 0x10000000U, 0x10000000U,
+	/* Keep in sync with the UART entry in hvm_event_vectors.S. */
+	hexagon_linear_entry_set(&hexagon_fixed_tail[idx], HVM_UART_PDE_BASE, HVM_UART_PDE_BASE,
 				  __HVM_LINEAR_SIZE_4MB,
 				  __HVM_LINEAR_R | __HVM_LINEAR_W | __HVM_LINEAR_U,
 				  __HEXAGON_C_DEV, __HVM_LINEAR_SHARED);
