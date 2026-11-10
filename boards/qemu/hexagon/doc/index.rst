@@ -127,6 +127,24 @@ select it over the bundled one:
 
    $ export QEMU_BIN_PATH="$PWD"
 
+The ``qemu_hexagon_qcs6490_cdsp`` SoC qualifier requires a Qualcomm QEMU build
+whose QCS6490 PL011 UART is mapped at ``0x37000000``. Older builds may map it
+at ``0x10000000``; H2 can boot with those builds, but Zephyr's console output
+will not appear. Set ``QEMU_BIN_PATH`` to a compatible build before running
+that qualifier.
+
+The QCS6490 qualifier can be selected when building an application with:
+
+.. code-block:: console
+
+   $ west build -b qemu_hexagon/qemu_hexagon_qcs6490_cdsp samples/hello_world
+
+Use a QCS6490-compatible H2 ``loadlinux`` firmware and set
+``HEXAGON_H2_LOADLINUX`` to its path, as described in Step 4.
+
+The existing ``qemu_hexagon/qemu_hexagon_virt`` qualifier continues to use the
+``virt`` machine and its matching firmware.
+
 Step 3: Install the Hexagon SDK
 ================================
 

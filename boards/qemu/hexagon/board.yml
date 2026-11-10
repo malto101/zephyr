@@ -4,3 +4,4 @@ board:
   vendor: qemu
   socs:
     - name: qemu_hexagon_virt
+    - name: qemu_hexagon_qcs6490_cdsp

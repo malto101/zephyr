@@ -12,10 +12,11 @@ if(TOOLCHAIN_HOME)
   list(APPEND QEMU_BINARY_HINTS ${TOOLCHAIN_HOME})
 endif()
 
-set(QEMU_BOARD_FLAGS
-  -machine virt
-  -m 4G
-)
+if(CONFIG_SOC_QEMU_HEXAGON_VIRT)
+  set(QEMU_BOARD_FLAGS -machine virt -m 4G)
+elseif(CONFIG_SOC_QEMU_HEXAGON_QCS6490_CDSP)
+  set(QEMU_BOARD_FLAGS -machine qcs6490-cdsp -m 4G)
+endif()
 
 # Hexagon boots Zephyr as an H2 hypervisor guest.  QEMU loads H2's
 # "loadlinux" as -bios; H2 then boots the Zephyr ELF placed at the
