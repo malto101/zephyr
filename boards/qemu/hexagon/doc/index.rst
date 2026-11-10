@@ -145,6 +145,22 @@ Use a QCS6490-compatible H2 ``loadlinux`` firmware and set
 The existing ``qemu_hexagon/qemu_hexagon_virt`` qualifier continues to use the
 ``virt`` machine and its matching firmware.
 
+The ``qemu_hexagon/qemu_hexagon_sa8775p_cdsp`` qualifier uses the SA8775P
+``sa8775p-cdsp`` machine. Like QCS6490, it requires a Qualcomm QEMU build with
+the PL011 UART mapped at ``0x37000000``. Build an application with:
+
+.. code-block:: console
+
+   $ west build -b qemu_hexagon/qemu_hexagon_sa8775p_cdsp samples/hello_world
+
+The ``qemu_hexagon/qemu_hexagon_sa8775p_cdsp`` qualifier is currently
+build-tested only. The available generic ``virt`` H2 ``loadlinux`` image has
+load segments incompatible with the SA8775P memory map, and the H2 source
+recipe below does not provide a validated SA8775P configuration. SA8775P
+runtime boot has not been verified.
+
+Set ``QEMU_BIN_PATH`` to a compatible QEMU build to select this machine.
+
 Step 3: Install the Hexagon SDK
 ================================
 

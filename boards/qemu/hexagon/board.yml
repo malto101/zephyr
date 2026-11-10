@@ -5,3 +5,4 @@ board:
   socs:
     - name: qemu_hexagon_virt
     - name: qemu_hexagon_qcs6490_cdsp
+    - name: qemu_hexagon_sa8775p_cdsp

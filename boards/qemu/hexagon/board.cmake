@@ -16,6 +16,8 @@ if(CONFIG_SOC_QEMU_HEXAGON_VIRT)
   set(QEMU_BOARD_FLAGS -machine virt -m 4G)
 elseif(CONFIG_SOC_QEMU_HEXAGON_QCS6490_CDSP)
   set(QEMU_BOARD_FLAGS -machine qcs6490-cdsp -m 4G)
+elseif(CONFIG_SOC_QEMU_HEXAGON_SA8775P_CDSP)
+  set(QEMU_BOARD_FLAGS -machine sa8775p-cdsp -m 4G)
 endif()
 
 # Hexagon boots Zephyr as an H2 hypervisor guest.  QEMU loads H2's

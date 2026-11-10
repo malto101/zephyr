@@ -20,3 +20,13 @@ config NUM_IRQS
 	default 64
 
 endif # SOC_QEMU_HEXAGON_QCS6490_CDSP
+
+if SOC_QEMU_HEXAGON_SA8775P_CDSP
+
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	default $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)
+
+config NUM_IRQS
+	default 64
+
+endif # SOC_QEMU_HEXAGON_SA8775P_CDSP

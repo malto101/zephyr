@@ -7,6 +7,10 @@ config SOC_QEMU_HEXAGON_VIRT
 config SOC_QEMU_HEXAGON_QCS6490_CDSP
 	bool
 
+config SOC_QEMU_HEXAGON_SA8775P_CDSP
+	bool
+
 config SOC
 	default "qemu_hexagon_virt" if SOC_QEMU_HEXAGON_VIRT
 	default "qemu_hexagon_qcs6490_cdsp" if SOC_QEMU_HEXAGON_QCS6490_CDSP
+	default "qemu_hexagon_sa8775p_cdsp" if SOC_QEMU_HEXAGON_SA8775P_CDSP
