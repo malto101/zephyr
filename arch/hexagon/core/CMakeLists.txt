@@ -23,5 +23,7 @@ zephyr_library_sources_ifdef(CONFIG_HW_STACK_PROTECTION stack_protect.c)
 zephyr_library_sources_ifdef(CONFIG_PM power.c)
 zephyr_library_sources_ifdef(CONFIG_ARCH_STACKWALK stacktrace.c)
 
+zephyr_library_sources_ifdef(CONFIG_HEXAGON_HVX hvx.c hvx_context.S)
+
 zephyr_library_sources_ifdef(CONFIG_MMU mmu.c)
 zephyr_library_sources_ifdef(CONFIG_USERSPACE userspace.c user_mode_state.c)

@@ -33,6 +33,35 @@ config HEXAGON_USER_STACK_ENTRIES
 	  any stack below 64KB. Part of a stack that does not fit faults on access.
 	  Each entry adds 8 bytes to struct k_thread.
 
+config CPU_HAS_HEXAGON_HVX
+	bool
+	help
+	  Selected by SoCs whose CPU has Hexagon Vector eXtensions (HVX).
+
+config HEXAGON_HVX
+	bool "HVX coprocessor support"
+	depends on CPU_HAS_HEXAGON_HVX
+	depends on !SMP
+	help
+	  Use Hexagon Vector eXtensions (HVX) from your application, with
+	  compiler intrinsics or assembly. Any thread can run HVX code without
+	  any setup, and each thread keeps its own vector registers across
+	  context switches. Threads that never use HVX don't pay for it.
+	  A thread done with vector work can call hexagon_hvx_release() to
+	  free its context for others. HVX can't be used from interrupt
+	  handlers.
+
+config HEXAGON_HVX_SAVE_AREAS
+	int "HVX save areas"
+	depends on HEXAGON_HVX
+	default 2
+	range 1 32
+	help
+	  How many threads can use HVX at the same time on top of the number
+	  of hardware HVX contexts. Raise it if your application runs more
+	  HVX threads than the hardware has contexts. Each one costs about
+	  4 KB of RAM.
+
 if CPU_HAS_MMU
 
 config HEXAGON_MMU

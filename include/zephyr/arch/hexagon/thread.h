@@ -109,6 +109,13 @@ struct _thread_arch {
 #endif
 #endif
 
+#ifdef CONFIG_HEXAGON_HVX
+	/* HVX context (SSR.XA) this thread owns, -1 if none */
+	int8_t hvx_ctx;
+	/* HVX state parked here when the context was taken, or NULL */
+	void *hvx_save;
+#endif
+
 #ifdef CONFIG_USERSPACE
 	/*
 	 * 1 while this thread runs in Hexagon user mode. Mirrored into the
