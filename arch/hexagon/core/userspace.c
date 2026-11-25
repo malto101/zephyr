@@ -258,8 +258,10 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 	 * Install this thread's hardware memory-domain map before the
 	 * privilege drop below -- the first user-mode access must already
 	 * be bound by the domain's linear map, not the permissive boot
-	 * table.
+	 * table. Stay on this CPU until vmrte, which re-enables interrupts
+	 * from GSR.IE.
 	 */
+	(void)arch_irq_lock();
 	z_hexagon_mem_domain_switch();
 
 	/*
@@ -271,10 +273,9 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 #ifdef CONFIG_HW_STACK_PROTECTION
 	/*
 	 * Once this thread's FRAMELIMIT is priv_stack's, a switch away and
-	 * back would load it while SP is still on this stack; keep
-	 * interrupts off until vmrte, which re-enables them from GSR.IE.
+	 * back would load it while SP is still on this stack: interrupts
+	 * are already off until vmrte.
 	 */
-	(void)arch_irq_lock();
 	z_hexagon_stack_protect_user_enter(thread);
 #endif
 
@@ -440,19 +441,28 @@ static uint32_t hexagon_partition_attr_to_xwru(k_mem_partition_attr_t attr)
 	return xwru;
 }
 
-BUILD_ASSERT(!IS_ENABLED(CONFIG_SMP),
-	     "Hexagon tracks one installed memory map: SMP is not supported");
+/*
+ * User thread whose map each CPU has installed. NULL means
+ * hexagon_kernel_map is active. Only set under z_mem_domain_lock; each
+ * CPU may clear its own entry at any time.
+ */
+static struct k_thread *volatile hexagon_map_thread[CONFIG_MP_MAX_NUM_CPUS];
 
-/* User thread whose map is installed. NULL means hexagon_kernel_map is active. */
-static struct k_thread *hexagon_map_thread;
+#ifdef CONFIG_SMP
+/* CPUs asked to drop their installed map, see hexagon_map_evict() */
+static atomic_t hexagon_map_evict_req;
+#endif
 
 /*
- * Fall back to the kernel map so the active list may be rewritten. It
- * never changes after boot, so its TLB entries stay.
+ * Fall back to the kernel map on this CPU so the active list may be
+ * rewritten. It never changes after boot, so its TLB entries stay.
+ * Called with interrupts locked.
  */
 static void hexagon_mem_domain_uninstall(void)
 {
-	if (hexagon_map_thread == NULL) {
+	unsigned int cpu = arch_curr_cpu()->id;
+
+	if (hexagon_map_thread[cpu] == NULL) {
 		return;
 	}
 
@@ -460,8 +470,71 @@ static void hexagon_mem_domain_uninstall(void)
 			      VM_TLB_INVALIDATE_FALSE) != 0) {
 		k_panic();
 	}
-	hexagon_map_thread = NULL;
+	hexagon_map_thread[cpu] = NULL;
 }
+
+static bool hexagon_map_uses(struct k_thread *installed, struct k_mem_domain *domain,
+			     struct k_thread *thread)
+{
+	return installed != NULL &&
+	       (installed == thread || installed->mem_domain_info.mem_domain == domain);
+}
+
+/*
+ * Make every CPU whose installed map is thread's, or chains to domain's
+ * list, fall back to the kernel map. H2 walks the installed list on
+ * every TLB miss and fills the TLB without a lock, so a list may only
+ * be rewritten once no CPU has it installed. The TLB is shared, so the
+ * map_stale invalidate on reinstall covers every CPU.
+ *
+ * Other CPUs drop their map from the IPI handler, or from
+ * arch_spin_relax() if they spin on z_mem_domain_lock with interrupts
+ * locked, and reinstall it on their next event exit.
+ *
+ * Called with z_mem_domain_lock held.
+ */
+static void hexagon_map_evict(struct k_mem_domain *domain, struct k_thread *thread)
+{
+	unsigned int self = arch_curr_cpu()->id;
+
+	if (hexagon_map_uses(hexagon_map_thread[self], domain, thread)) {
+		hexagon_mem_domain_uninstall();
+	}
+
+#ifdef CONFIG_SMP
+	uint32_t mask = 0U;
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (unsigned int i = 0U; i < num_cpus; i++) {
+		if (i != self && hexagon_map_uses(hexagon_map_thread[i], domain, thread)) {
+			mask |= BIT(i);
+		}
+	}
+
+	if (mask == 0U) {
+		return;
+	}
+
+	(void)atomic_or(&hexagon_map_evict_req, (atomic_val_t)mask);
+	arch_sched_directed_ipi(mask);
+	while (((uint32_t)atomic_get(&hexagon_map_evict_req) & mask) != 0U) {
+		arch_spin_relax();
+	}
+#endif
+}
+
+#ifdef CONFIG_SMP
+/* Handle a hexagon_map_evict() request for this CPU, if any. */
+void z_hexagon_mem_domain_evict_poll(void)
+{
+	atomic_val_t bit = (atomic_val_t)BIT(arch_curr_cpu()->id);
+
+	if ((atomic_get(&hexagon_map_evict_req) & bit) != 0) {
+		hexagon_mem_domain_uninstall();
+		(void)atomic_and(&hexagon_map_evict_req, ~bit);
+	}
+}
+#endif
 
 /*
  * Rebuild domain->arch.list: one dense run of entries per non-empty,
@@ -473,7 +546,8 @@ static void hexagon_mem_domain_uninstall(void)
  * the all-zero terminator to the HVM walker and truncate the list.
  *
  * H2 walks the installed list on every TLB miss, kernel-mode ones
- * included, so never rewrite it in place while installed. Every member
+ * included, so never rewrite it in place while any CPU has it
+ * installed. Every member
  * map is marked stale so its next install invalidates its ASID.
  *
  * Called with z_mem_domain_lock held.
@@ -485,10 +559,7 @@ static void hexagon_mem_domain_rebuild(struct k_mem_domain *domain, int skip_id)
 	int remaining_partitions = domain->num_partitions;
 	struct k_thread *thread;
 
-	if (hexagon_map_thread != NULL &&
-	    hexagon_map_thread->mem_domain_info.mem_domain == domain) {
-		hexagon_mem_domain_uninstall();
-	}
+	hexagon_map_evict(domain, NULL);
 
 	for (int i = 0; remaining_partitions > 0 && i < CONFIG_MAX_DOMAIN_PARTITIONS; i++) {
 		const struct k_mem_partition *part = &domain->partitions[i];
@@ -536,9 +607,7 @@ static void hexagon_thread_map_rebuild(struct k_thread *thread)
 	size_t stack_size = thread->stack_info.size;
 	uint32_t idx;
 
-	if (hexagon_map_thread == thread) {
-		hexagon_mem_domain_uninstall();
-	}
+	hexagon_map_evict(NULL, thread);
 
 	hexagon_align_region_to_page(&stack_addr, &stack_size);
 
@@ -565,10 +634,7 @@ int arch_mem_domain_init(struct k_mem_domain *domain)
  */
 int arch_mem_domain_deinit(struct k_mem_domain *domain)
 {
-	if (hexagon_map_thread != NULL &&
-	    hexagon_map_thread->mem_domain_info.mem_domain == domain) {
-		hexagon_mem_domain_uninstall();
-	}
+	hexagon_map_evict(domain, NULL);
 
 	(void)memset(domain->arch.list, 0, sizeof(domain->arch.list));
 	return 0;
@@ -623,9 +689,7 @@ int arch_mem_domain_thread_add(struct k_thread *thread)
  */
 int arch_mem_domain_thread_remove(struct k_thread *thread)
 {
-	if (hexagon_map_thread == thread) {
-		hexagon_mem_domain_uninstall();
-	}
+	hexagon_map_evict(NULL, thread);
 	return 0;
 }
 
@@ -645,22 +709,28 @@ static void hexagon_mem_domain_enter(struct k_thread *thread)
  * arch_user_mode_enter() for the very first drop to user mode.
  *
  * Resuming the thread whose map is installed is a no-op. Every rebuild
- * of that map, or of the domain list it chains to, uninstalls it first,
- * so the installed map is never stale.
+ * of that map, or of the domain list it chains to, uninstalls it on
+ * every CPU first, so an installed map is never stale. Installing takes
+ * z_mem_domain_lock, so it waits for a rebuild in progress.
+ *
+ * Called with interrupts locked.
  */
 void z_hexagon_mem_domain_switch(void)
 {
 	struct k_thread *thread = k_sched_current_thread_query();
+	unsigned int cpu = arch_curr_cpu()->id;
+	k_spinlock_key_t key;
 
 	if (thread->arch.priv_level == 0 || thread->mem_domain_info.mem_domain == NULL) {
 		hexagon_mem_domain_uninstall();
 		return;
 	}
 
-	if (thread == hexagon_map_thread) {
+	if (thread == hexagon_map_thread[cpu]) {
 		return;
 	}
 
+	key = k_spin_lock(&z_mem_domain_lock);
 	if (hexagon_vm_newmap(thread->arch.map, VM_TRANS_TYPE_LINEAR,
 			      thread->arch.map_stale ? VM_TLB_INVALIDATE_TRUE
 						     : VM_TLB_INVALIDATE_FALSE) != 0) {
@@ -668,7 +738,8 @@ void z_hexagon_mem_domain_switch(void)
 	}
 
 	thread->arch.map_stale = 0;
-	hexagon_map_thread = thread;
+	hexagon_map_thread[cpu] = thread;
+	k_spin_unlock(&z_mem_domain_lock, key);
 }
 
 #endif /* CONFIG_USERSPACE */

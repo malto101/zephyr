@@ -29,6 +29,11 @@ extern void z_hexagon_stack_protect_user_enter(struct k_thread *thread);
 #ifdef CONFIG_SMP
 /* Point GP at this CPU's block */
 void z_hexagon_cpu_local_init(struct z_hexagon_cpu_local *local);
+
+#ifdef CONFIG_USERSPACE
+/* Drop this CPU's installed memory map if another CPU asked for it */
+void z_hexagon_mem_domain_evict_poll(void);
+#endif
 #endif
 
 /* This CPU's ISR nesting count; only stable with interrupts locked */

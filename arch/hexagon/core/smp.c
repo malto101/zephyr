@@ -56,6 +56,9 @@ static void ipi_isr(const void *arg)
 {
 	ARG_UNUSED(arg);
 
+#ifdef CONFIG_USERSPACE
+	z_hexagon_mem_domain_evict_poll();
+#endif
 	z_sched_ipi();
 }
 
@@ -87,6 +90,10 @@ void arch_sched_broadcast_ipi(void)
 /* HVM asks guests to yield a VCPU that spins, so the lock holder can run */
 void arch_spin_relax(void)
 {
+#ifdef CONFIG_USERSPACE
+	/* A spinner may have interrupts locked: serve map evictions here too */
+	z_hexagon_mem_domain_evict_poll();
+#endif
 	hexagon_vm_yield();
 }
 
