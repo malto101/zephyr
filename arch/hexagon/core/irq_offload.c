@@ -15,34 +15,48 @@
  */
 #define IRQ_OFFLOAD_LINE 0
 
-static volatile irq_offload_routine_t offload_routine;
-static const void *volatile offload_param;
+/* Per CPU: each CPU posts the line to itself */
+static irq_offload_routine_t offload_routine[CONFIG_MP_MAX_NUM_CPUS];
+static const void *offload_param[CONFIG_MP_MAX_NUM_CPUS];
 
 static void irq_offload_isr(const void *param)
 {
 	ARG_UNUSED(param);
 
-	irq_offload_routine_t tmp = offload_routine;
-	const void *tmp_param = offload_param;
+	uint32_t cpu = arch_proc_id();
+	irq_offload_routine_t tmp = offload_routine[cpu];
 
-	offload_routine = NULL;
+	offload_routine[cpu] = NULL;
 	if (tmp != NULL) {
-		tmp(tmp_param);
+		tmp(offload_param[cpu]);
 	}
 }
 
 void arch_irq_offload(irq_offload_routine_t routine, const void *parameter)
 {
-	unsigned int key;
+	unsigned int key = arch_irq_lock();
+	uint32_t cpu = arch_proc_id();
 
-	key = irq_lock();
-	offload_routine = routine;
-	offload_param = parameter;
+	/*
+	 * ISRs run with IE off, so a posted line would only fire after
+	 * this ISR returns. Run the routine synchronously instead.
+	 */
+	if (arch_curr_cpu()->nested != 0U) {
+		routine(parameter);
+		arch_irq_unlock(key);
+		return;
+	}
 
-	/* Trigger software interrupt - fires when irq_unlock re-enables IE */
+	offload_routine[cpu] = routine;
+	offload_param[cpu] = parameter;
+
+	/* The line is per-VCPU, enable it on whichever CPU this is */
+	irq_enable(IRQ_OFFLOAD_LINE);
+
+	/* Fires on this CPU once IE is back on */
 	hexagon_irq_trigger(IRQ_OFFLOAD_LINE);
 
-	irq_unlock(key);
+	arch_irq_unlock(key);
 }
 
 void arch_irq_offload_init(void)

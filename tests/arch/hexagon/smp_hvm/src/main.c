@@ -68,4 +68,43 @@ ZTEST(smp_hvm, test_vmstart_runs_second_vcpu)
 		      probe_vpid, (uint32_t)id);
 }
 
+#if defined(CONFIG_SMP) && defined(CONFIG_SCHED_CPU_MASK) && defined(CONFIG_IRQ_OFFLOAD)
+#include <zephyr/irq_offload.h>
+
+static volatile int32_t offload_cpu;
+
+static void offload_fn(const void *arg)
+{
+	ARG_UNUSED(arg);
+	offload_cpu = (int32_t)arch_proc_id();
+}
+
+static void offload_thread(void *p1, void *p2, void *p3)
+{
+	ARG_UNUSED(p2);
+	ARG_UNUSED(p3);
+
+	offload_cpu = -1;
+	irq_offload(offload_fn, NULL);
+	zassert_equal(offload_cpu, (int32_t)(uintptr_t)p1, "offload ran on CPU %d",
+		      offload_cpu);
+}
+
+ZTEST(smp_hvm, test_irq_offload_each_cpu)
+{
+	static K_THREAD_STACK_DEFINE(stack, 1024);
+	static struct k_thread thread;
+
+	for (unsigned int cpu = 0U; cpu < arch_num_cpus(); cpu++) {
+		k_tid_t tid = k_thread_create(&thread, stack, K_THREAD_STACK_SIZEOF(stack),
+					      offload_thread, (void *)(uintptr_t)cpu, NULL, NULL,
+					      K_PRIO_PREEMPT(0), 0, K_FOREVER);
+
+		zassert_ok(k_thread_cpu_pin(tid, (int)cpu));
+		k_thread_start(tid);
+		zassert_ok(k_thread_join(tid, K_SECONDS(5)), "offload on CPU %u hung", cpu);
+	}
+}
+#endif
+
 ZTEST_SUITE(smp_hvm, NULL, NULL, NULL, NULL, NULL);
