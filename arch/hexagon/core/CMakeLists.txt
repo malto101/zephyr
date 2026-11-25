@@ -18,7 +18,9 @@ zephyr_library_sources(
 
 zephyr_library_sources_ifdef(CONFIG_THREAD_LOCAL_STORAGE tls.c)
 zephyr_library_sources_ifdef(CONFIG_IRQ_OFFLOAD irq_offload.c)
-zephyr_library_sources_ifdef(CONFIG_SMP smp.c)
+if(CONFIG_SMP OR CONFIG_MP_MAX_NUM_CPUS GREATER 1)
+  zephyr_library_sources(smp.c smp_start.S)
+endif()
 
 zephyr_library_sources_ifdef(CONFIG_HW_STACK_PROTECTION stack_protect.c)
 zephyr_library_sources_ifdef(CONFIG_PM power.c)

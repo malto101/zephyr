@@ -1,0 +1,18 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include "qemu_hexagon_qemu_hexagon_virt.dts"
+
+/ {
+	cpus {
+		cpu1: cpu@1 {
+			compatible = "qcom,hexagon-v67";
+			reg = <1>;
+			device_type = "cpu";
+			clock-frequency = <1000000>;
+		};
+	};
+};
