@@ -1,0 +1,24 @@
+identifier: qemu_hexagon/qemu_hexagon_virt/smp
+name: QEMU Hexagon Virtual Machine SMP
+type: qemu
+simulation:
+  - name: qemu
+    exec: qemu-system-hexagon
+arch: hexagon
+toolchain:
+  - hexagon
+env:
+  - HEXAGON_TOOLCHAIN_PATH
+preferred_toolchain: hexagon
+ram: 16384
+testing:
+  default: false
+  timeout_multiplier: 2
+  ignore_tags:
+    - net
+    - bluetooth
+    - cpp
+supported:
+  - smp
+  - uart
+vendor: qemu

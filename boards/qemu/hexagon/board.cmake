@@ -12,7 +12,8 @@ if(TOOLCHAIN_HOME)
   list(APPEND QEMU_BINARY_HINTS ${TOOLCHAIN_HOME})
 endif()
 
-# Zephyr is a uniprocessor HVM guest, extra idle threads delay its timer.
+# One HW thread per VCPU, extra idle threads delay the timer. With SMP,
+# cmake/emu/qemu.cmake appends -smp cpus=CONFIG_MP_MAX_NUM_CPUS.
 set(QEMU_BOARD_FLAGS
   -machine virt
   -smp 1
