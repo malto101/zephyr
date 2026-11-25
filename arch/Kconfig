@@ -251,6 +251,8 @@ config HEXAGON
 	select CPU_HAS_MMU
 	select USE_SWITCH
 	select USE_SWITCH_SUPPORTED
+	select ARCH_HAS_DIRECTED_IPIS
+	select SCHED_IPI_SUPPORTED if SMP
 	help
 	  Qualcomm Hexagon DSP architecture
 
