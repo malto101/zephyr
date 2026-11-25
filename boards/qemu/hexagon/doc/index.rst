@@ -37,6 +37,19 @@ System Clock
 
 This board configuration uses a system clock frequency of 1 MHz.
 
+SMP
+---
+
+The ``qemu_hexagon/qemu_hexagon_virt/smp`` variant enables :kconfig:option:`CONFIG_SMP`
+with two CPUs. Each CPU is an HVM virtual processor started with ``vmstart``, and QEMU is
+run with ``-smp cpus=2``. HVM allows up to four CPUs; set
+:kconfig:option:`CONFIG_MP_MAX_NUM_CPUS` and add ``cpu`` nodes to the devicetree for more.
+
+The variant has the following restrictions:
+
+* :kconfig:option:`CONFIG_USERSPACE` and HVX are not supported with SMP.
+* QEMU instruction counting is disabled, so timing is not deterministic.
+
 Known Problems or Limitations
 =============================
 
