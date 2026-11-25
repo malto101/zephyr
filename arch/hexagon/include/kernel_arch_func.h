@@ -26,6 +26,20 @@ extern void z_hexagon_stack_protect_user_enter(struct k_thread *thread);
 #endif
 #endif
 
+static inline bool arch_is_in_isr(void)
+{
+#ifdef CONFIG_SMP
+	/* Do not migrate between finding the CPU and reading it */
+	unsigned int key = arch_irq_lock();
+	bool ret = arch_curr_cpu()->nested != 0U;
+
+	arch_irq_unlock(key);
+	return ret;
+#else
+	return _kernel.cpus[0].nested != 0U;
+#endif
+}
+
 /* Thread context switching */
 extern void z_hexagon_arch_switch(void *switch_to, void **switched_from);
 static ALWAYS_INLINE void arch_switch(void *switch_to, void **switched_from)

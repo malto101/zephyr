@@ -63,15 +63,16 @@ GDATA(_kernel)
 
 /* offsets.h will be generated and included during build */
 #include <offsets_short.h>
+#include <hexagon_asm_cpu.h>
 
 #if defined(CONFIG_HW_STACK_PROTECTION) && defined(CONFIG_USERSPACE)
 /*
- * Load FRAMELIMIT (c16) from the given _current->arch field. Clobbers r0
- * and p0; only for use once both are saved.
+ * Load FRAMELIMIT (c16) from the given _current->arch field. Clobbers r0,
+ * r1 and p0; only for use once they are saved.
  */
 .macro LOAD_CURRENT_FRAMELIMIT field
-	r0 = ##_kernel
-	r0 = memw(r0+#(___kernel_t_cpus_OFFSET + ___cpu_t_current_OFFSET))
+	LOAD_CURRENT_CPU r1
+	r0 = memw(r1+#___cpu_t_current_OFFSET)
 	r0 = add(r0, #___thread_t_arch_OFFSET)
 	r0 = memw(r0+#\field)
 	c16 = r0
@@ -243,11 +244,8 @@ GDATA(_kernel)
 	 * to be preserved.
 	 */
 
-	/* r4 = &_kernel.cpus[0] */
-	r4 = ##_kernel
-	{
-		r4 = add(r4, #___kernel_t_cpus_OFFSET)
-	}
+	/* r4 = _current_cpu */
+	LOAD_CURRENT_CPU r4
 
 	/* r5 = _current_cpu->current (old thread pointer) */
 	{

@@ -82,20 +82,6 @@ static inline void arch_nop(void)
 	__asm__ volatile("nop");
 }
 
-/* ISR nesting counter -- incremented/decremented in irq_manage.c */
-extern uint32_t z_hexagon_isr_nesting;
-
-/**
- * @brief Check if currently executing in interrupt context.
- *
- * @retval true if in ISR context.
- * @retval false if in thread context.
- */
-static inline bool arch_is_in_isr(void)
-{
-	return z_hexagon_isr_nesting != 0U;
-}
-
 #ifdef CONFIG_USERSPACE
 /*
  * A user thread's stack is mapped U=1 in whole MMU pages, so it must

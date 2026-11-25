@@ -18,6 +18,18 @@ ZTEST(smp_hvm, test_vpid_boot_cpu)
 	zassert_equal(hexagon_vm_vpid(), id, "vpid not stable");
 }
 
+ZTEST(smp_hvm, test_cpu_lookup)
+{
+	unsigned int key = arch_irq_lock();
+	_cpu_t *cpu = arch_curr_cpu();
+	uint32_t id = arch_proc_id();
+
+	arch_irq_unlock(key);
+
+	zassert_true(id < arch_num_cpus(), "CPU id %u", id);
+	zassert_equal_ptr(cpu, &_kernel.cpus[id], "CPU %u has the wrong _cpu_t", id);
+}
+
 static volatile uint32_t probe_vpid;
 
 void probe_entry_c(void)
