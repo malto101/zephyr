@@ -28,6 +28,9 @@ extern "C" {
 #define HEXAGON_IRQ_PRIORITY_HIGHEST 0
 #define HEXAGON_IRQ_PRIORITY_LOWEST  63
 
+/* Scheduler IPI of CPU n is shared interrupt HEXAGON_IPI_IRQ_BASE + n */
+#define HEXAGON_IPI_IRQ_BASE 26
+
 #ifndef _ASMLANGUAGE
 
 /*

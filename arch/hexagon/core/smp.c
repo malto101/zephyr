@@ -8,7 +8,9 @@
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/barrier.h>
 #include <kernel_internal.h>
+#include <ipi.h>
 #include <hexagon_vm.h>
+#include <irq.h>
 
 #ifdef CONFIG_THREAD_LOCAL_STORAGE
 #include <kernel_tls.h>
@@ -30,8 +32,51 @@ static atomic_t slot_published;
 void z_hexagon_secondary_entry(void);
 
 #ifdef CONFIG_SMP
+static void ipi_isr(const void *arg)
+{
+	ARG_UNUSED(arg);
+
+	z_sched_ipi();
+}
+
+/* A CPU's IPI is enabled on that CPU only, so a post reaches just it */
+static void ipi_init_local(void)
+{
+	int32_t irq = HEXAGON_IPI_IRQ_BASE + (int32_t)arch_proc_id();
+
+	hexagon_vm_intop_locen(irq);
+	hexagon_vm_intop_globen(irq);
+}
+
+void arch_sched_directed_ipi(uint32_t cpu_bitmap)
+{
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (unsigned int i = 0U; i < num_cpus; i++) {
+		if ((cpu_bitmap & BIT(i)) != 0U) {
+			hexagon_vm_intop_post(HEXAGON_IPI_IRQ_BASE + (int32_t)i, 0);
+		}
+	}
+}
+
+void arch_sched_broadcast_ipi(void)
+{
+	arch_sched_directed_ipi(IPI_ALL_CPUS_MASK & ~BIT(arch_proc_id()));
+}
+
+/* HVM asks guests to yield a VCPU that spins, so the lock holder can run */
+void arch_spin_relax(void)
+{
+	hexagon_vm_yield();
+}
+
+#define IPI_CONNECT(n, _) IRQ_CONNECT(HEXAGON_IPI_IRQ_BASE + (n), 0, ipi_isr, NULL, 0)
+
 int arch_smp_init(void)
 {
+	LISTIFY(CONFIG_MP_MAX_NUM_CPUS, IPI_CONNECT, (;));
+	ipi_init_local();
+
 	return 0;
 }
 #endif
@@ -73,6 +118,9 @@ FUNC_NORETURN FUNC_NO_STACK_PROTECTOR void z_hexagon_secondary_c(void)
 		hexagon_vm_yield();
 	}
 
+#ifdef CONFIG_SMP
+	ipi_init_local();
+#endif
 	start_args.fn(start_args.arg);
 	CODE_UNREACHABLE;
 }
