@@ -6,3 +6,8 @@ common:
   ignore_faults: false
 tests:
   arch.hexagon.smp_hvm: {}
+  arch.hexagon.smp_hvm.smp:
+    platform_allow: qemu_hexagon/qemu_hexagon_virt/smp
+    extra_configs:
+      - CONFIG_SCHED_CPU_MASK=y
+      - CONFIG_IRQ_OFFLOAD=y
