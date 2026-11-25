@@ -84,6 +84,14 @@ SECTION_FUNC(TEXT, z_hexagon_arch_switch)
 	}
 #endif
 
+#ifdef CONFIG_SMP
+	/*
+	 * Another CPU may resume this thread as soon as the handle is
+	 * set, so the frame stores must be visible first.
+	 */
+	barrier
+#endif
+
 	/* Store current stack pointer as switch handle for old thread */
 	{
 		memw(r1) = r29
