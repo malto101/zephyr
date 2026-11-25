@@ -1,0 +1,8 @@
+common:
+  arch_allow: hexagon
+  tags:
+    - arch
+    - smp
+  ignore_faults: false
+tests:
+  arch.hexagon.smp_hvm: {}

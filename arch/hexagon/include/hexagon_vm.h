@@ -46,6 +46,20 @@
 #define HEXAGON_VM_vmpmuconfig 25
 #define HEXAGON_VM_vmgetinfo   26
 
+/*
+ * Raw HVM VCPU id, as returned by vmstart and vmvpid:
+ * reserved (bits 0-9) | cpuidx (bits 10-25) | vmidx (bits 26-31)
+ *
+ * cpuidx indexes the VM's VCPU slots, below HVM_MAX_VCPUS. HVM hands
+ * slots out in no particular order, the boot VCPU need not be slot 0.
+ */
+#define HVM_ID_CPUIDX_SHIFT 10
+#define HVM_ID_CPUIDX_WIDTH 16
+#define HVM_ID_CPUIDX(id)   (((id) >> HVM_ID_CPUIDX_SHIFT) & 0xffffU)
+
+/* VCPU slots the HVM loader gives a guest */
+#define HVM_MAX_VCPUS 4
+
 /* Special trap0 numbers */
 #define HEXAGON_VM_hwconfig    31
 
@@ -221,6 +235,7 @@ static inline uint32_t hexagon_linear_entry_xwru(const struct hexagon_linear_ent
 
 #ifndef _ASMLANGUAGE
 #include <stdint.h>
+#include <zephyr/toolchain.h>
 
 enum VM_CACHE_OPS {
 	hvmc_ickill,
@@ -505,6 +520,33 @@ static inline int32_t hexagon_vm_setvec(void *ptr)
 	return r0_val;
 }
 
+/**
+ * @brief Start another VCPU of this VM.
+ *
+ * The new VCPU runs at @p pc on @p sp in guest mode with interrupts
+ * disabled, sharing the caller's event vectors and memory map. HVM
+ * passes it no argument.
+ *
+ * @param pc Entry point, 4-byte aligned.
+ * @param sp Initial stack pointer, 8-byte aligned.
+ *
+ * @return Raw HVM id of the new VCPU, or -1 on failure.
+ */
+static inline int32_t hexagon_vm_start(void (*pc)(void), void *sp)
+{
+	register uint32_t r0_val __asm__("r0") = (uint32_t)(uintptr_t)pc;
+	register uint32_t r1_val __asm__("r1") = (uint32_t)(uintptr_t)sp;
+
+	__asm__ volatile("trap1(#%[trap_id])"
+			 : "+r"(r0_val), "+r"(r1_val)
+			 : [trap_id] "i"(HEXAGON_VM_vmstart)
+			 : "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9",
+			   "r10", "r11", "r12", "r13", "r14", "r15", "r28",
+			   "r31", "sa0", "lc0", "sa1", "lc1", "m0", "m1",
+			   "usr", "p0", "p1", "p2", "p3", "memory");
+	return (int32_t)r0_val;
+}
+
 static inline void hexagon_vm_stop(enum VM_STOP_STATUS status)
 {
 	register int32_t r0_val __asm__("r0") = (int32_t)status;
@@ -549,17 +591,16 @@ static inline uint32_t hexagon_vm_version(void)
 	return r0_val;
 }
 
-static inline int32_t hexagon_vm_vpid(void)
+/**
+ * @brief Raw HVM id of the calling VCPU.
+ *
+ * HVM's vmvpid writes only r0, so this costs no caller-saved spills.
+ */
+static ALWAYS_INLINE uint32_t hexagon_vm_vpid(void)
 {
-	register int32_t r0_val __asm__("r0");
+	register uint32_t r0_val __asm__("r0");
 
-	__asm__ volatile("trap1(#%[trap_id])"
-			 : "=r"(r0_val)
-			 : [trap_id] "i"(HEXAGON_VM_vmvpid)
-			 : "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8",
-			   "r9", "r10", "r11", "r12", "r13", "r14", "r15",
-			   "r28", "r31", "sa0", "lc0", "sa1", "lc1", "m0",
-			   "m1", "usr", "p0", "p1", "p2", "p3");
+	__asm__ volatile("trap1(#%[trap_id])" : "=r"(r0_val) : [trap_id] "i"(HEXAGON_VM_vmvpid));
 	return r0_val;
 }
 
