@@ -18,6 +18,7 @@
 #include <hexagon_vm.h>
 #include <switch_frame.h>
 #include <offsets_short.h>
+#include <hexagon_asm_cpu.h>
 
 GTEXT(z_hexagon_arch_switch)
 GTEXT(z_hexagon_thread_start)
@@ -94,12 +95,7 @@ SECTION_FUNC(TEXT, z_hexagon_arch_switch)
 	}
 
 #ifdef CONFIG_HW_STACK_PROTECTION
-	{
-		r2 = ##_kernel
-	}
-	{
-		r2 = add(r2, #___kernel_t_cpus_OFFSET)
-	}
+	LOAD_CURRENT_CPU r2
 	{
 		r2 = memw(r2+#___cpu_t_current_OFFSET)
 	}

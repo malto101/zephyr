@@ -34,6 +34,10 @@ FUNC_NORETURN void z_prep_c(void)
 	__asm__ volatile("ugp = %0" : : "r"(block + ROUND_UP(z_tls_data_size(), 8)));
 #endif
 
+#ifdef CONFIG_SMP
+	z_hexagon_slot_cpu[HVM_ID_CPUIDX(hexagon_vm_vpid())] = &_kernel.cpus[0];
+#endif
+
 	z_cstart();
 	CODE_UNREACHABLE;
 }

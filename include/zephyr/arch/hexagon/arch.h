@@ -83,20 +83,6 @@ static inline void arch_nop(void)
 	__asm__ volatile("nop");
 }
 
-/* ISR nesting counter -- incremented/decremented in irq_manage.c */
-extern uint32_t z_hexagon_isr_nesting;
-
-/**
- * @brief Check if currently executing in interrupt context.
- *
- * @retval true if in ISR context.
- * @retval false if in thread context.
- */
-static inline bool arch_is_in_isr(void)
-{
-	return z_hexagon_isr_nesting != 0U;
-}
-
 #ifdef CONFIG_MMU
 /* VM_TRANS_TYPE_TABLE geometry: 1024 entries per table, 4MB per L1 entry. */
 #define HEXAGON_MMU_PT_ENTRIES 1024U

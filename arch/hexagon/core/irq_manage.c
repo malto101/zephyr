@@ -23,9 +23,6 @@ extern void z_hexagon_user_mode_sync(void);
 
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 
-/* ISR nesting counter -- read by arch_is_in_isr() in arch.h */
-uint32_t z_hexagon_isr_nesting;
-
 /* Forward declarations for handlers defined below */
 static void z_hexagon_exception_handler(unsigned int event_num,
 					struct event_context *ctx);
@@ -192,6 +189,7 @@ static void z_hexagon_interrupt_handler(struct event_context *ctx)
 {
 	uint32_t irq_num;
 	uint32_t cause = ctx->gsr & GSR_CAUSE_MASK;
+	_cpu_t *cpu;
 
 	/*
 	 * GSR.CAUSE (bits 7:0) contains the virtual IRQ number
@@ -206,7 +204,8 @@ static void z_hexagon_interrupt_handler(struct event_context *ctx)
 	}
 
 	/* Track ISR nesting so arch_is_in_isr() works correctly */
-	z_hexagon_isr_nesting++;
+	cpu = arch_curr_cpu();
+	cpu->nested++;
 
 	/* Call ISR from SW ISR table */
 #if defined(CONFIG_GEN_SW_ISR_TABLE)
@@ -218,7 +217,7 @@ static void z_hexagon_interrupt_handler(struct event_context *ctx)
 	z_irq_spurious(NULL);
 #endif
 
-	z_hexagon_isr_nesting--;
+	cpu->nested--;
 
 	/* Re-enable the interrupt (H2 disables it on delivery) */
 	hexagon_intc_ack(irq_num);
