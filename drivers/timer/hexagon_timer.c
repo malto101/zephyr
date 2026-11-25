@@ -85,6 +85,15 @@ static int sys_clock_driver_init(void)
 
 SYS_INIT(sys_clock_driver_init, PRE_KERNEL_2, CONFIG_SYSTEM_CLOCK_INIT_PRIORITY);
 
+#ifdef CONFIG_SMP
+/* Each VCPU has its own HVM timer and local enable for the timer IRQ */
+void smp_timer_init(void)
+{
+	irq_enable(HEXAGON_TIMER_IRQ);
+	timer_core_smp_prime();
+}
+#endif
+
 void sys_clock_disable(void)
 {
 	irq_disable(HEXAGON_TIMER_IRQ);
