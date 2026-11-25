@@ -25,8 +25,16 @@ BUILD_ASSERT(offsetof(struct z_hexagon_cpu_local, nested) == 8U);
 
 struct z_hexagon_cpu_local z_hexagon_cpu_local[CONFIG_MP_MAX_NUM_CPUS];
 
+#ifdef CONFIG_USERSPACE
+/* GP block by HVM CPU index, for the GP reload on event entry from user mode */
+struct z_hexagon_cpu_local *z_hexagon_vcpu_local[HVM_MAX_VCPUS];
+#endif
+
 void z_hexagon_cpu_local_init(struct z_hexagon_cpu_local *local)
 {
+#ifdef CONFIG_USERSPACE
+	z_hexagon_vcpu_local[HVM_ID_CPUIDX(hexagon_vm_vpid())] = local;
+#endif
 	__asm__ volatile("gp = %0" : : "r"(local) : "memory");
 }
 #endif
