@@ -16,25 +16,55 @@
 #include <hexagon_vm.h>
 
 #ifdef CONFIG_SMP
-/* Zephyr CPU running on each HVM VCPU slot, set as each CPU starts */
-extern _cpu_t *z_hexagon_slot_cpu[HVM_MAX_VCPUS];
+/*
+ * Per-CPU block that GP points to. GP is unused with -G0, HVM keeps it per
+ * VCPU, and its low 6 bits are read-only, hence the alignment. User code
+ * can write GP, so USERSPACE on SMP would need it reloaded on event entry.
+ */
+struct z_hexagon_cpu_local {
+	_cpu_t *cpu;
+	struct k_thread *current;
+	/* ISR nesting count, kept here so one load reads it without a race */
+	uint32_t nested;
+} __aligned(64);
+
+extern struct z_hexagon_cpu_local z_hexagon_cpu_local[CONFIG_MP_MAX_NUM_CPUS];
 #endif
 
 /**
  * @brief Return the current CPU's kernel data.
  *
- * On SMP each CPU is an HVM VCPU, found through its vmvpid slot.
+ * On SMP it is read from the GP block.
  *
  * @return Pointer to the current CPU's _cpu_t.
  */
 static ALWAYS_INLINE _cpu_t *arch_curr_cpu(void)
 {
 #ifdef CONFIG_SMP
-	return z_hexagon_slot_cpu[HVM_ID_CPUIDX(hexagon_vm_vpid())];
+	_cpu_t *cpu;
+
+	__asm__ volatile("%0 = memw(gp+#0)" : "=r"(cpu));
+	return cpu;
 #else
 	return &_kernel.cpus[0];
 #endif
 }
+
+#ifdef CONFIG_ARCH_HAS_CUSTOM_CURRENT_IMPL
+/* A single GP-relative load cannot race with migration. */
+static ALWAYS_INLINE struct k_thread *arch_current_thread(void)
+{
+	struct k_thread *thread;
+
+	__asm__ volatile("%0 = memw(gp+#4)" : "=r"(thread));
+	return thread;
+}
+
+static ALWAYS_INLINE void arch_current_thread_set(struct k_thread *thread)
+{
+	__asm__ volatile("memw(gp+#4) = %0" : : "r"(thread) : "memory");
+}
+#endif
 
 /**
  * @brief Return the ID of the current CPU.

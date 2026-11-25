@@ -14,6 +14,7 @@
 #include <hexagon_intc.h>
 #include <hexagon_fatal.h>
 #include <irq.h>
+#include <kernel_internal.h>
 #include <event_context.h>
 #include <hexagon_hvx.h>
 #ifdef CONFIG_USERSPACE
@@ -189,7 +190,7 @@ static void z_hexagon_interrupt_handler(struct event_context *ctx)
 {
 	uint32_t irq_num;
 	uint32_t cause = ctx->gsr & GSR_CAUSE_MASK;
-	_cpu_t *cpu;
+	uint32_t *nested;
 
 	/*
 	 * GSR.CAUSE (bits 7:0) contains the virtual IRQ number
@@ -204,8 +205,8 @@ static void z_hexagon_interrupt_handler(struct event_context *ctx)
 	}
 
 	/* Track ISR nesting so arch_is_in_isr() works correctly */
-	cpu = arch_curr_cpu();
-	cpu->nested++;
+	nested = z_hexagon_nested();
+	(*nested)++;
 
 	/* Call ISR from SW ISR table */
 #if defined(CONFIG_GEN_SW_ISR_TABLE)
@@ -217,7 +218,7 @@ static void z_hexagon_interrupt_handler(struct event_context *ctx)
 	z_irq_spurious(NULL);
 #endif
 
-	cpu->nested--;
+	(*nested)--;
 
 	/* Re-enable the interrupt (H2 disables it on delivery) */
 	hexagon_intc_ack(irq_num);

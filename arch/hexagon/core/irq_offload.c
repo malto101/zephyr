@@ -41,7 +41,7 @@ void arch_irq_offload(irq_offload_routine_t routine, const void *parameter)
 	 * ISRs run with IE off, so a posted line would only fire after
 	 * this ISR returns. Run the routine synchronously instead.
 	 */
-	if (arch_curr_cpu()->nested != 0U) {
+	if (k_is_in_isr()) {
 		routine(parameter);
 		arch_irq_unlock(key);
 		return;
