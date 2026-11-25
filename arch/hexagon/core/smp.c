@@ -5,7 +5,6 @@
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/barrier.h>
 #include <kernel_internal.h>
 #include <ipi.h>
@@ -18,16 +17,29 @@
 
 BUILD_ASSERT(CONFIG_MP_MAX_NUM_CPUS <= HVM_MAX_VCPUS, "more CPUs than HVM VCPU slots");
 
-_cpu_t *z_hexagon_slot_cpu[HVM_MAX_VCPUS];
+#ifdef CONFIG_SMP
+/* Offsets used by the GP-relative loads in arch_inlines.h and kernel_arch_func.h */
+BUILD_ASSERT(offsetof(struct z_hexagon_cpu_local, cpu) == 0U);
+BUILD_ASSERT(offsetof(struct z_hexagon_cpu_local, current) == 4U);
+BUILD_ASSERT(offsetof(struct z_hexagon_cpu_local, nested) == 8U);
+
+struct z_hexagon_cpu_local z_hexagon_cpu_local[CONFIG_MP_MAX_NUM_CPUS];
+
+void z_hexagon_cpu_local_init(struct z_hexagon_cpu_local *local)
+{
+	__asm__ volatile("gp = %0" : : "r"(local) : "memory");
+}
+#endif
 
 /* The kernel starts one CPU at a time and waits for it to come up */
 static struct {
 	arch_cpustart_t fn;
 	void *arg;
 	char *stack;
+#ifdef CONFIG_SMP
+	struct z_hexagon_cpu_local *local;
+#endif
 } start_args;
-
-static atomic_t slot_published;
 
 void z_hexagon_secondary_entry(void);
 
@@ -89,19 +101,15 @@ void arch_cpu_start(int cpu_num, k_thread_stack_t *stack, int sz, arch_cpustart_
 	start_args.fn = fn;
 	start_args.arg = arg;
 	start_args.stack = K_KERNEL_STACK_BUFFER(stack);
-	atomic_clear(&slot_published);
+#ifdef CONFIG_SMP
+	start_args.local = &z_hexagon_cpu_local[cpu_num];
+	start_args.local->cpu = &_kernel.cpus[cpu_num];
+#endif
 	barrier_dmem_fence_full();
 
 	id = hexagon_vm_start(z_hexagon_secondary_entry, top);
 	__ASSERT(id != -1, "vmstart failed for CPU %d", cpu_num);
-	if (id == -1) {
-		return;
-	}
-
-	/* The new CPU cannot find its _cpu_t until this is published */
-	z_hexagon_slot_cpu[HVM_ID_CPUIDX((uint32_t)id)] = &_kernel.cpus[cpu_num];
-	barrier_dmem_fence_full();
-	atomic_set(&slot_published, 1);
+	ARG_UNUSED(id);
 }
 
 FUNC_NORETURN FUNC_NO_STACK_PROTECTOR void z_hexagon_secondary_c(void)
@@ -114,11 +122,8 @@ FUNC_NORETURN FUNC_NO_STACK_PROTECTOR void z_hexagon_secondary_c(void)
 	__asm__ volatile("ugp = %0" : : "r"(block + ROUND_UP(z_tls_data_size(), 8)));
 #endif
 
-	while (atomic_get(&slot_published) == 0) {
-		hexagon_vm_yield();
-	}
-
 #ifdef CONFIG_SMP
+	z_hexagon_cpu_local_init(start_args.local);
 	ipi_init_local();
 #endif
 	start_args.fn(start_args.arg);

@@ -35,7 +35,8 @@ FUNC_NORETURN void z_prep_c(void)
 #endif
 
 #ifdef CONFIG_SMP
-	z_hexagon_slot_cpu[HVM_ID_CPUIDX(hexagon_vm_vpid())] = &_kernel.cpus[0];
+	z_hexagon_cpu_local[0].cpu = &_kernel.cpus[0];
+	z_hexagon_cpu_local_init(&z_hexagon_cpu_local[0]);
 #endif
 
 	z_cstart();

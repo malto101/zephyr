@@ -26,15 +26,32 @@ extern void z_hexagon_stack_protect_user_enter(struct k_thread *thread);
 #endif
 #endif
 
+#ifdef CONFIG_SMP
+/* Point GP at this CPU's block */
+void z_hexagon_cpu_local_init(struct z_hexagon_cpu_local *local);
+#endif
+
+/* This CPU's ISR nesting count; only stable with interrupts locked */
+static ALWAYS_INLINE uint32_t *z_hexagon_nested(void)
+{
+#ifdef CONFIG_SMP
+	struct z_hexagon_cpu_local *local;
+
+	__asm__ volatile("%0 = gp" : "=r"(local));
+	return &local->nested;
+#else
+	return &_kernel.cpus[0].nested;
+#endif
+}
+
 static inline bool arch_is_in_isr(void)
 {
 #ifdef CONFIG_SMP
-	/* Do not migrate between finding the CPU and reading it */
-	unsigned int key = arch_irq_lock();
-	bool ret = arch_curr_cpu()->nested != 0U;
+	uint32_t nested;
 
-	arch_irq_unlock(key);
-	return ret;
+	/* A single GP-relative load cannot race with migration */
+	__asm__ volatile("%0 = memw(gp+#8)" : "=r"(nested));
+	return nested != 0U;
 #else
 	return _kernel.cpus[0].nested != 0U;
 #endif
