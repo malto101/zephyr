@@ -175,6 +175,23 @@ GDATA(_kernel)
 	r0 = usr
 	memw(r29+#EVENT_CTX_USR) = r0
 
+#if defined(CONFIG_SMP) && defined(CONFIG_USERSPACE)
+	/* User mode can write GP: reload this VCPU's block before using it. */
+	r0 = memw(r29+#EVENT_CTX_GSR)
+	{
+		p0 = tstbit(r0, #31)
+		if (!p0.new) jump:t 2f
+	}
+	trap1(#HEXAGON_VM_vmvpid)
+	{
+		r0 = extractu(r0, #HVM_ID_CPUIDX_WIDTH, #HVM_ID_CPUIDX_SHIFT)
+		r1 = ##z_hexagon_vcpu_local
+	}
+	r0 = memw(r1+r0<<#2)
+	gp = r0
+2:
+#endif
+
 #ifdef CONFIG_HW_STACK_PROTECTION
 #ifdef CONFIG_USERSPACE
 	/* From user mode: switch to the privileged stack's FRAMELIMIT. */

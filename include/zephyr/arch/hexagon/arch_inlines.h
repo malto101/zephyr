@@ -19,7 +19,7 @@
 /*
  * Per-CPU block that GP points to. GP is unused with -G0, HVM keeps it per
  * VCPU, and its low 6 bits are read-only, hence the alignment. User code
- * can write GP, so USERSPACE on SMP would need it reloaded on event entry.
+ * can write GP, so event entry from user mode reloads it.
  */
 struct z_hexagon_cpu_local {
 	_cpu_t *cpu;
