@@ -191,9 +191,10 @@ GDATA(_kernel)
 	 * A stack-limit exception leaves SP near the bottom of the stack,
 	 * with the frame above just fitting in the headroom the limit
 	 * keeps (see z_arch_stack_protection_setup()). The fatal error
-	 * handler cannot run there, so run it on the otherwise unused ISR
-	 * stack with no limit; the faulting thread is not resumed. The
-	 * event frame pointer is kept on that stack for EVENT_EXIT.
+	 * handler cannot run there, so run it on this CPU's otherwise
+	 * unused ISR stack with no limit; the faulting thread is not
+	 * resumed. The event frame pointer is kept on that stack for
+	 * EVENT_EXIT.
 	 */
 	r0 = memw(r29+#EVENT_CTX_GSR)
 	{
@@ -203,12 +204,14 @@ GDATA(_kernel)
 		p0 = cmp.eq(r0, #0x27)
 		if (!p0.new) jump:t 2f
 	}
+	LOAD_CURRENT_CPU r2
 	{
+		r2 = memw(r2+#___cpu_t_irq_stack_OFFSET)
 		r0 = #0
 		r1 = r29
 	}
 	c16 = r0
-	r29 = ##(z_interrupt_stacks + __z_interrupt_stack_SIZEOF - 8)
+	r29 = add(r2, #-8)
 	memw(r29+#0) = r1
 	{
 		r0 = #\event_num
