@@ -251,7 +251,6 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 	 * re-deriving _hexagon_user_mode_active as 1 on every later event
 	 * exit, even one unrelated to this thread.
 	 */
-	thread->arch.priv_level = 1;
 	hexagon_mem_domain_enter(thread);
 
 	/*
@@ -693,12 +692,18 @@ int arch_mem_domain_thread_remove(struct k_thread *thread)
 	return 0;
 }
 
-/* Build thread's map, called once priv_level is set. */
+/*
+ * Build thread's map and set priv_level. Both under z_mem_domain_lock
+ * with interrupts locked: z_hexagon_mem_domain_switch() on event exit
+ * installs thread->arch.map as soon as priv_level is set, and
+ * arch_mem_domain_thread_add() only rebuilds it once priv_level is set.
+ */
 static void hexagon_mem_domain_enter(struct k_thread *thread)
 {
 	k_spinlock_key_t key = k_spin_lock(&z_mem_domain_lock);
 
 	hexagon_thread_map_rebuild(thread);
+	thread->arch.priv_level = 1;
 	k_spin_unlock(&z_mem_domain_lock, key);
 }
 
