@@ -386,5 +386,13 @@ ZTEST(clock, test_ms_time_duration)
  * @}
  */
 
+static void clock_after(void *data)
+{
+	ARG_UNUSED(data);
+
+	/* A failed assertion skips the test's own k_timer_stop() */
+	k_timer_stop(&ktimer);
+}
+
 extern void *common_setup(void);
-ZTEST_SUITE(clock, NULL, common_setup, NULL, NULL, NULL);
+ZTEST_SUITE(clock, NULL, common_setup, NULL, clock_after, NULL);
