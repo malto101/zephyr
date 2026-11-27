@@ -54,6 +54,8 @@ SECTIONS
 
     GROUP_START(ROMABLE_REGION)
     __rom_region_start = DT_REG_ADDR(DT_CHOSEN(zephyr_sram));
+    /* The whole image is RAM: its page frames must never be handed out. */
+    z_mapped_start = __rom_region_start;
 
     /* Reset vector must be at the beginning */
     SECTION_PROLOGUE(.reset.__start,,)
@@ -83,6 +85,7 @@ SECTIONS
         __text_region_start = .;
         *(.text .text.*)
         *(.gnu.linkonce.t.*)
+        #include <snippets-text-sections.ld>
         #include <zephyr/linker/kobject-text.ld>
     } GROUP_LINK_IN(ROMABLE_REGION)
 
@@ -124,7 +127,6 @@ SECTIONS
     _app_smem_rom_start = LOADADDR(_APP_SMEM_SECTION_NAME);
 
     _image_ram_start = _app_smem_start;
-    z_mapped_start = _app_smem_start;
 #endif /* CONFIG_USERSPACE */
 
     /*
@@ -145,7 +147,6 @@ SECTIONS
         MMU_PAGE_ALIGN
 #ifndef CONFIG_USERSPACE
         _image_ram_start = .;
-        z_mapped_start = .;
 #endif
         __data_region_start = .;
         __data_start = .;
