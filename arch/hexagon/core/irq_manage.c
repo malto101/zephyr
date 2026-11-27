@@ -130,6 +130,10 @@ static void z_hexagon_exception_handler(unsigned int event_num,
 		return;
 	}
 
+	if (IS_ENABLED(CONFIG_USERSPACE) && z_hexagon_mem_domain_fault_is_stale()) {
+		return;
+	}
+
 	LOG_ERR("exception: cause=0x%x pc=0x%x", cause, ctx->gelr);
 
 	if (cause == HEXAGON_CAUSE_STACK_LIMIT) {

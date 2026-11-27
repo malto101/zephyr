@@ -76,11 +76,10 @@ int hexagon_fixed_map_contains(uintptr_t va, size_t size);
 
 #ifdef CONFIG_USERSPACE
 /*
- * Note that vmclrmap() flushed the installed table's ASID after a
- * translation was removed or changed: every other table must flush on
- * its next install. See userspace.c.
+ * Flush a removed or changed kernel translation of va from the TLB under
+ * every table. Called with the MMU lock held. See userspace.c.
  */
-void hexagon_map_flushed(void);
+void hexagon_map_page_flush(uintptr_t va);
 
 /* Copy a new kernel L1 entry outside KERNEL_VM to every domain. */
 void hexagon_mem_domain_sync_l1(uint32_t slot);

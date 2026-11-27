@@ -29,7 +29,18 @@ extern void z_hexagon_stack_protect_user_enter(struct k_thread *thread);
 #ifdef CONFIG_SMP
 /* Point GP at this CPU's block */
 void z_hexagon_cpu_local_init(struct z_hexagon_cpu_local *local);
+
+#ifdef CONFIG_USERSPACE
+/* Drop this CPU's installed domain table if another CPU asked for it */
+void z_hexagon_mem_domain_evict_poll(void);
+
+/* Install the kernel table on a started CPU */
+void z_hexagon_mem_domain_cpu_init(void);
 #endif
+#endif
+
+/* Whether a fault is due to _current's table not being installed yet */
+bool z_hexagon_mem_domain_fault_is_stale(void);
 
 /* This CPU's ISR nesting count; only stable with interrupts locked */
 static ALWAYS_INLINE uint32_t *z_hexagon_nested(void)

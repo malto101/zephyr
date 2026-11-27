@@ -30,8 +30,8 @@ LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
  * switch.S, and event_handlers.S.
  */
 void z_hexagon_mem_domain_switch(void);
-static uint32_t hexagon_domain_pte(const struct k_mem_domain *domain,
-				   const struct k_thread *owner, uintptr_t va, int skip_id);
+static uint32_t hexagon_domain_pte(struct k_mem_domain *domain, const struct k_thread *owner,
+				   uintptr_t va, int skip_id);
 
 /* [start, start + size) inside [base, base + len), overflow-safe. */
 static inline bool hexagon_range_within(uintptr_t start, size_t size, uintptr_t base, size_t len)
@@ -252,6 +252,13 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 #endif
 
 	/*
+	 * Keep interrupts off until vmrte, which re-enables them from
+	 * GSR.IE: the table installed below is this CPU's, so the thread
+	 * must not move to another one before it drops to user mode.
+	 */
+	(void)arch_irq_lock();
+
+	/*
 	 * Record the drop to user mode so z_hexagon_user_mode_sync() keeps
 	 * re-deriving _hexagon_user_mode_active as 1 on every later event
 	 * exit, even one unrelated to this thread.
@@ -274,10 +281,9 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 #ifdef CONFIG_HW_STACK_PROTECTION
 	/*
 	 * Once this thread's FRAMELIMIT is priv_stack's, a switch away and
-	 * back would load it while SP is still on this stack; keep
-	 * interrupts off until vmrte, which re-enables them from GSR.IE.
+	 * back would load it while SP is still on this stack; interrupts
+	 * stay off until vmrte.
 	 */
-	(void)arch_irq_lock();
 	z_hexagon_stack_protect_user_enter(thread);
 #endif
 
@@ -438,56 +444,168 @@ static uint32_t hexagon_partition_perms(k_mem_partition_attr_t attr)
 	return perms;
 }
 
-BUILD_ASSERT(!IS_ENABLED(CONFIG_SMP),
-	     "Hexagon tracks one installed page table and stack owner: SMP is not supported");
-
-/* Domain whose table is installed. NULL means hexagon_kernel_l1 is. */
-static struct k_mem_domain *hexagon_installed_domain;
+/* Domain whose table each CPU has installed. NULL means hexagon_kernel_l1 is. */
+static struct k_mem_domain *hexagon_installed[CONFIG_MP_MAX_NUM_CPUS];
 
 /* Every initialized domain, to propagate kernel table changes. */
 static sys_slist_t hexagon_domains;
 
-/*
- * Bumped whenever a translation is removed or changed. vmclrmap() only
- * flushes the installed table's ASID; a table whose generation lags
- * behind invalidates its ASID on its next install.
- */
-static uint32_t hexagon_map_gen;
-static uint32_t hexagon_kernel_map_gen;
+#ifdef CONFIG_SMP
+/* CPUs asked to fall back to the kernel table, see hexagon_domain_evict() */
+static atomic_t hexagon_evict_req;
+#endif
 
-void hexagon_map_flushed(void)
+/* Called with interrupts locked. */
+static inline struct k_mem_domain **hexagon_installed_here(void)
 {
-	hexagon_map_gen++;
-	if (hexagon_installed_domain == NULL) {
-		hexagon_kernel_map_gen = hexagon_map_gen;
-	} else {
-		hexagon_installed_domain->arch.gen = hexagon_map_gen;
-	}
+	return &hexagon_installed[arch_curr_cpu()->id];
 }
 
-static void hexagon_table_install(uint32_t *l1, uint32_t *gen, bool stale)
+static void hexagon_table_install(uint32_t *l1, bool invalidate)
 {
-	stale = stale || *gen != hexagon_map_gen;
 	if (hexagon_vm_newmap(l1, VM_TRANS_TYPE_TABLE,
-			      stale ? VM_TLB_INVALIDATE_TRUE : VM_TLB_INVALIDATE_FALSE) != 0) {
+			      invalidate ? VM_TLB_INVALIDATE_TRUE : VM_TLB_INVALIDATE_FALSE) != 0) {
 		k_panic();
 	}
-	*gen = hexagon_map_gen;
 }
 
+/*
+ * Needs no lock: a kernel table translation is flushed as soon as it
+ * changes, see hexagon_map_page_flush(), so it is never stale.
+ */
 static void hexagon_kernel_table_install(void)
 {
-	if (hexagon_installed_domain != NULL) {
-		hexagon_table_install(hexagon_kernel_l1, &hexagon_kernel_map_gen, false);
-		hexagon_installed_domain = NULL;
+	struct k_mem_domain **installed = hexagon_installed_here();
+
+	if (*installed != NULL) {
+		hexagon_table_install(hexagon_kernel_l1, false);
+		*installed = NULL;
 	}
 }
 
+/* Called with z_mem_domain_lock held. */
 static void hexagon_domain_table_install(struct k_mem_domain *domain)
 {
-	hexagon_table_install(domain->arch.l1, &domain->arch.gen, domain->arch.stale);
+	hexagon_table_install(domain->arch.l1, domain->arch.stale);
 	domain->arch.stale = false;
-	hexagon_installed_domain = domain;
+	*hexagon_installed_here() = domain;
+}
+
+/*
+ * Flush va from the TLB under the table at l1. HVM keys ASIDs on the
+ * table and vmclrmap() only flushes the caller's, but in the TLB all
+ * VCPUs share. Switch to l1 around it: every table maps the kernel
+ * alike, so this code keeps running.
+ *
+ * Called with interrupts locked.
+ */
+static void hexagon_table_flush(uint32_t *l1, uintptr_t va)
+{
+	struct k_mem_domain *cur = *hexagon_installed_here();
+	uint32_t *cur_l1 = (cur != NULL) ? cur->arch.l1 : hexagon_kernel_l1;
+
+	barrier_dmem_fence_full();
+	if (l1 != cur_l1) {
+		hexagon_table_install(l1, false);
+	}
+	(void)hexagon_vm_clrmap((void *)va, 1);
+	if (l1 != cur_l1) {
+		hexagon_table_install(cur_l1, false);
+	}
+}
+
+static bool hexagon_domain_is_installed(const struct k_mem_domain *domain)
+{
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (unsigned int i = 0U; i < num_cpus; i++) {
+		if (hexagon_installed[i] == domain) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/*
+ * Flush a changed translation of va in domain's table now if a CPU has
+ * it installed, else on its next install. Installing takes
+ * z_mem_domain_lock, so it cannot race with this.
+ *
+ * Called with z_mem_domain_lock held.
+ */
+static void hexagon_domain_flush(struct k_mem_domain *domain, uintptr_t va)
+{
+	if (hexagon_domain_is_installed(domain)) {
+		hexagon_table_flush(domain->arch.l1, va);
+	} else {
+		domain->arch.stale = true;
+	}
+}
+
+void hexagon_map_page_flush(uintptr_t va)
+{
+	struct arch_mem_domain *arch;
+
+	hexagon_table_flush(hexagon_kernel_l1, va);
+
+	/* Outside KERNEL_VM the domains share the kernel's L2 tables. */
+	if (!hexagon_va_in_vm(va)) {
+		SYS_SLIST_FOR_EACH_CONTAINER(&hexagon_domains, arch, node) {
+			hexagon_domain_flush(CONTAINER_OF(arch, struct k_mem_domain, arch), va);
+		}
+	}
+}
+
+#ifdef CONFIG_SMP
+/* Serve a hexagon_domain_evict() request for this CPU, if any. */
+void z_hexagon_mem_domain_evict_poll(void)
+{
+	atomic_val_t bit = (atomic_val_t)BIT(arch_curr_cpu()->id);
+
+	if ((atomic_get(&hexagon_evict_req) & bit) != 0) {
+		hexagon_kernel_table_install();
+		(void)atomic_and(&hexagon_evict_req, ~bit);
+	}
+}
+#endif
+
+/*
+ * Make every CPU that has domain's table installed fall back to the
+ * kernel's, before the table is rebuilt or freed. Waits for the other
+ * CPUs: one spinning with interrupts locked serves the request from
+ * arch_spin_relax().
+ *
+ * Called with z_mem_domain_lock held.
+ */
+static void hexagon_domain_evict(const struct k_mem_domain *domain)
+{
+	unsigned int self = arch_curr_cpu()->id;
+
+	if (hexagon_installed[self] == domain) {
+		hexagon_kernel_table_install();
+	}
+
+#ifdef CONFIG_SMP
+	uint32_t mask = 0U;
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (unsigned int i = 0U; i < num_cpus; i++) {
+		if (i != self && hexagon_installed[i] == domain) {
+			mask |= BIT(i);
+		}
+	}
+
+	if (mask == 0U) {
+		return;
+	}
+
+	(void)atomic_or(&hexagon_evict_req, (atomic_val_t)mask);
+	arch_sched_directed_ipi(mask);
+	while (((uint32_t)atomic_get(&hexagon_evict_req) & mask) != 0U) {
+		arch_spin_relax();
+	}
+#endif
 }
 
 static bool hexagon_thread_stack_contains(const struct k_thread *thread, uintptr_t va)
@@ -499,14 +617,35 @@ static bool hexagon_thread_stack_contains(const struct k_thread *thread, uintptr
 	return va >= start && va < end;
 }
 
+/* Whether va lies in owner's stack or a stack domain's table maps. */
+static bool hexagon_domain_stack_contains(struct k_mem_domain *domain,
+					  const struct k_thread *owner, uintptr_t va)
+{
+	struct k_thread *thread;
+
+	if (owner != NULL && hexagon_thread_stack_contains(owner, va)) {
+		return true;
+	}
+
+	SYS_DLIST_FOR_EACH_CONTAINER(&domain->thread_mem_domain_list, thread,
+				     mem_domain_info.thread_mem_domain_node) {
+		if (thread->arch.stack_domain == domain &&
+		    hexagon_thread_stack_contains(thread, va)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 /*
- * What domain's table maps va to while owner runs in user mode: owner's
- * stack, else the first mappable partition other than skip_id, else the
- * kernel's PTE. Overrides keep the kernel's frame and cache attributes,
- * so a partition over unmapped memory stays unmapped.
+ * What domain's table maps va to, with owner's stack mapped too: a
+ * mapped stack, else the first mappable partition other than skip_id,
+ * else the kernel's PTE. Overrides keep the kernel's frame and cache
+ * attributes, so a partition over unmapped memory stays unmapped.
  */
-static uint32_t hexagon_domain_pte(const struct k_mem_domain *domain,
-				   const struct k_thread *owner, uintptr_t va, int skip_id)
+static uint32_t hexagon_domain_pte(struct k_mem_domain *domain, const struct k_thread *owner,
+				   uintptr_t va, int skip_id)
 {
 	uint32_t pte = hexagon_kernel_pte_get(va);
 	int remaining = domain->num_partitions;
@@ -515,7 +654,7 @@ static uint32_t hexagon_domain_pte(const struct k_mem_domain *domain,
 		return pte;
 	}
 
-	if (owner != NULL && hexagon_thread_stack_contains(owner, va)) {
+	if (hexagon_domain_stack_contains(domain, owner, va)) {
 		return (pte & ~HEXAGON_PTE_PERM_MASK) | __HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_U;
 	}
 
@@ -539,8 +678,7 @@ static uint32_t hexagon_domain_pte(const struct k_mem_domain *domain,
 
 /*
  * Recompute domain's PTEs over the KERNEL_VM part of [start, start +
- * size). A changed translation leaves the TLB now if the table is
- * installed, else on its next install.
+ * size), flushing every changed translation.
  *
  * Called with z_mem_domain_lock held.
  */
@@ -557,29 +695,41 @@ static void hexagon_domain_update(struct k_mem_domain *domain, uintptr_t start, 
 	for (; va < end; va += CONFIG_MMU_PAGE_SIZE) {
 		uint32_t *pte = &domain->arch.l2[(va - HEXAGON_MMU_VM_START) >>
 						  HEXAGON_MMU_SLOT_SHIFT][hexagon_pt_index(va)];
-		uint32_t new = hexagon_domain_pte(domain, domain->arch.stack_owner, va, skip_id);
+		uint32_t new = hexagon_domain_pte(domain, NULL, va, skip_id);
 		uint32_t old = *pte;
 
 		if (new == old) {
 			continue;
 		}
 		*pte = new;
-		if (old == 0U) {
-			continue;
-		}
-		if (hexagon_installed_domain == domain) {
-			barrier_dmem_fence_full();
-			(void)hexagon_vm_clrmap((void *)va, 1);
-		} else {
-			domain->arch.stale = true;
+		if (old != 0U) {
+			hexagon_domain_flush(domain, va);
 		}
 	}
 }
 
-static void hexagon_domain_update_stack(struct k_mem_domain *domain,
-					const struct k_thread *thread)
+/*
+ * Map thread's stack in domain's table and unmap it from the one that
+ * mapped it, if any. domain is NULL to only unmap it.
+ *
+ * Called with z_mem_domain_lock held.
+ */
+static void hexagon_stack_map(struct k_thread *thread, struct k_mem_domain *domain)
 {
-	hexagon_domain_update(domain, thread->stack_info.start, thread->stack_info.size, -1);
+	struct k_mem_domain *old = thread->arch.stack_domain;
+
+	if (old == domain) {
+		return;
+	}
+
+	thread->arch.stack_domain = domain;
+	if (old != NULL) {
+		hexagon_domain_update(old, thread->stack_info.start, thread->stack_info.size, -1);
+	}
+	if (domain != NULL) {
+		hexagon_domain_update(domain, thread->stack_info.start, thread->stack_info.size,
+				      -1);
+	}
 }
 
 void hexagon_mem_domain_sync_l1(uint32_t slot)
@@ -611,9 +761,7 @@ int arch_mem_domain_init(struct k_mem_domain *domain)
 	struct arch_mem_domain *arch = &domain->arch;
 
 	(void)sys_slist_find_and_remove(&hexagon_domains, &arch->node);
-	if (hexagon_installed_domain == domain) {
-		hexagon_kernel_table_install();
-	}
+	hexagon_domain_evict(domain);
 
 	(void)memcpy(arch->l1, hexagon_kernel_l1, sizeof(arch->l1));
 	for (uint32_t i = 0; i < HEXAGON_MMU_VM_SLOTS; i++) {
@@ -623,7 +771,6 @@ int arch_mem_domain_init(struct k_mem_domain *domain)
 			     sizeof(arch->l2[i]));
 		arch->l1[slot] = (uint32_t)(uintptr_t)arch->l2[i] | __HVM_PDE_S_4KB;
 	}
-	arch->stack_owner = NULL;
 	/* HVM keys ASIDs on the table address: drop any earlier use of it. */
 	arch->stale = true;
 
@@ -633,9 +780,7 @@ int arch_mem_domain_init(struct k_mem_domain *domain)
 
 int arch_mem_domain_deinit(struct k_mem_domain *domain)
 {
-	if (hexagon_installed_domain == domain) {
-		hexagon_kernel_table_install();
-	}
+	hexagon_domain_evict(domain);
 	(void)sys_slist_find_and_remove(&hexagon_domains, &domain->arch.node);
 	return 0;
 }
@@ -674,22 +819,31 @@ int arch_mem_domain_partition_remove(struct k_mem_domain *domain, uint32_t parti
 	return 0;
 }
 
-/* z_hexagon_mem_domain_switch() maps the stack once the thread runs. */
+/*
+ * z_hexagon_mem_domain_switch() maps the stack once the thread runs. If
+ * it runs on another CPU now, kick that CPU to switch tables.
+ */
 int arch_mem_domain_thread_add(struct k_thread *thread)
 {
+#ifdef CONFIG_SMP
+	unsigned int self = arch_curr_cpu()->id;
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (unsigned int i = 0U; i < num_cpus; i++) {
+		if (i != self && _kernel.cpus[i].current == thread) {
+			arch_sched_directed_ipi(BIT(i));
+		}
+	}
+#else
 	ARG_UNUSED(thread);
+#endif
 	return 0;
 }
 
-/* thread->mem_domain_info.mem_domain still names the domain it leaves. */
+/* The core has already taken thread off its domain's thread list. */
 int arch_mem_domain_thread_remove(struct k_thread *thread)
 {
-	struct k_mem_domain *domain = thread->mem_domain_info.mem_domain;
-
-	if (domain != NULL && domain->arch.stack_owner == thread) {
-		domain->arch.stack_owner = NULL;
-		hexagon_domain_update_stack(domain, thread);
-	}
+	hexagon_stack_map(thread, NULL);
 	return 0;
 }
 
@@ -699,14 +853,18 @@ int arch_mem_domain_thread_remove(struct k_thread *thread)
  * (z_hexagon_thread_start, EVENT_EXIT) and from arch_user_mode_enter()
  * for the first drop to user mode.
  *
- * Threads of one domain share its table, and only the stack of the one
- * that runs is mapped U=1: switching between them moves that mapping.
+ * Threads of one domain share its table. On UP only the stack of the
+ * one that runs is mapped U=1: switching between them moves that
+ * mapping. On SMP several may run at once, so the stacks of those that
+ * have run stay mapped until they leave the domain.
+ *
+ * Called with interrupts locked.
  */
 void z_hexagon_mem_domain_switch(void)
 {
 	struct k_thread *thread = k_sched_current_thread_query();
 	struct k_mem_domain *domain = thread->mem_domain_info.mem_domain;
-	struct k_thread *old_owner;
+	struct k_mem_domain **installed = hexagon_installed_here();
 	k_spinlock_key_t key;
 
 	if (thread->arch.priv_level == 0 || domain == NULL) {
@@ -714,24 +872,62 @@ void z_hexagon_mem_domain_switch(void)
 		return;
 	}
 
-	if (hexagon_installed_domain == domain && domain->arch.stack_owner == thread) {
+	if (*installed == domain && thread->arch.stack_domain == domain) {
 		return;
 	}
 
 	key = k_spin_lock(&z_mem_domain_lock);
-	if (hexagon_installed_domain != domain) {
+	if (*installed != domain) {
 		hexagon_domain_table_install(domain);
 	}
 
-	old_owner = domain->arch.stack_owner;
-	if (old_owner != thread) {
-		domain->arch.stack_owner = thread;
-		if (old_owner != NULL) {
-			hexagon_domain_update_stack(domain, old_owner);
+	if (thread->arch.stack_domain != domain) {
+		if (!IS_ENABLED(CONFIG_SMP)) {
+			struct k_thread *other;
+
+			SYS_DLIST_FOR_EACH_CONTAINER(&domain->thread_mem_domain_list, other,
+						     mem_domain_info.thread_mem_domain_node) {
+				if (other->arch.stack_domain == domain) {
+					hexagon_stack_map(other, NULL);
+				}
+			}
 		}
-		hexagon_domain_update_stack(domain, thread);
+		hexagon_stack_map(thread, domain);
 	}
 	k_spin_unlock(&z_mem_domain_lock, key);
 }
+
+/*
+ * A fault taken while _current's table is not installed, or does not
+ * map its stack yet, is due to a change made from another CPU, such as
+ * a move to another domain. EVENT_EXIT installs the right table, and the
+ * faulting packet runs again.
+ */
+bool z_hexagon_mem_domain_fault_is_stale(void)
+{
+	struct k_thread *thread = _current;
+	struct k_mem_domain *domain = thread->mem_domain_info.mem_domain;
+	k_spinlock_key_t key;
+	bool stale;
+
+	if (thread->arch.priv_level == 0 || domain == NULL) {
+		return false;
+	}
+
+	key = k_spin_lock(&z_mem_domain_lock);
+	stale = *hexagon_installed_here() != domain || thread->arch.stack_domain != domain;
+	k_spin_unlock(&z_mem_domain_lock, key);
+
+	return stale;
+}
+
+#ifdef CONFIG_SMP
+/* A started CPU runs on the table of the CPU that started it. */
+void z_hexagon_mem_domain_cpu_init(void)
+{
+	hexagon_table_install(hexagon_kernel_l1, false);
+	*hexagon_installed_here() = NULL;
+}
+#endif
 
 #endif /* CONFIG_USERSPACE */

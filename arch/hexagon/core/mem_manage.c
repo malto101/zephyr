@@ -15,8 +15,8 @@
  *
  * A new translation needs no TLB maintenance: HVM caches no misses.
  * Removing or changing one does. vmclrmap() only flushes the installed
- * table's ASID, so hexagon_map_flushed() makes every other table flush
- * its ASID on its next install.
+ * table's ASID, so with USERSPACE hexagon_map_page_flush() flushes every
+ * table.
  */
 
 #include <string.h>
@@ -91,8 +91,6 @@ static uint32_t *hexagon_kernel_pte_alloc(uintptr_t va)
 /* Write pte for each page of [va, va + size), pa advancing unless pte is 0. */
 static void hexagon_kernel_pte_update(uintptr_t va, size_t size, uint32_t pte)
 {
-	bool flushed = false;
-
 	for (size_t off = 0; off < size; off += CONFIG_MMU_PAGE_SIZE) {
 		uintptr_t page = va + off;
 		uint32_t *slot = hexagon_kernel_pte_alloc(page);
@@ -109,19 +107,14 @@ static void hexagon_kernel_pte_update(uintptr_t va, size_t size, uint32_t pte)
 		}
 #endif
 		if (old != 0U) {
+#ifdef CONFIG_USERSPACE
+			hexagon_map_page_flush(page);
+#else
 			barrier_dmem_fence_full();
 			(void)hexagon_vm_clrmap((void *)page, 1);
-			flushed = true;
+#endif
 		}
 	}
-
-#ifdef CONFIG_USERSPACE
-	if (flushed) {
-		hexagon_map_flushed();
-	}
-#else
-	ARG_UNUSED(flushed);
-#endif
 }
 
 int arch_mem_map(void *virt, uintptr_t phys, size_t size, uint32_t flags)

@@ -136,15 +136,14 @@ typedef uint32_t k_mem_partition_attr_t;
  *
  * The domain's VM_TRANS_TYPE_TABLE page table. l1 shares the kernel's
  * second-level tables outside KERNEL_VM and points at the private l2
- * tables inside it, which hold the domain's partitions and the stack of
- * stack_owner, the member thread that last ran in user mode.
+ * tables inside it, which hold the domain's partitions and the stacks of
+ * the member threads whose arch.stack_domain is this domain.
  */
 struct arch_mem_domain {
 	uint32_t l1[HEXAGON_MMU_PT_ENTRIES] __aligned(HEXAGON_MMU_PT_ALIGN);
 	uint32_t l2[HEXAGON_MMU_VM_SLOTS][HEXAGON_MMU_PT_ENTRIES] __aligned(HEXAGON_MMU_PT_ALIGN);
 	sys_snode_t node;
-	struct k_thread *stack_owner;
-	uint32_t gen;
+	/* A translation changed while no CPU had the table installed */
 	bool stale;
 };
 

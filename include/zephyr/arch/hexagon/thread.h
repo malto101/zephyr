@@ -119,6 +119,9 @@ struct _thread_arch {
 	 */
 	uint8_t trap0_active;
 
+	/* Memory domain whose table maps this thread's stack, or NULL */
+	struct k_mem_domain *stack_domain;
+
 	/* Entry point and arguments for a K_USER thread, saved by
 	 * arch_new_thread() and consumed by hexagon_user_thread_entry().
 	 */

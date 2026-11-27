@@ -56,6 +56,9 @@ static void ipi_isr(const void *arg)
 {
 	ARG_UNUSED(arg);
 
+#ifdef CONFIG_USERSPACE
+	z_hexagon_mem_domain_evict_poll();
+#endif
 	z_sched_ipi();
 }
 
@@ -87,6 +90,10 @@ void arch_sched_broadcast_ipi(void)
 /* HVM asks guests to yield a VCPU that spins, so the lock holder can run */
 void arch_spin_relax(void)
 {
+#ifdef CONFIG_USERSPACE
+	/* A spinner may have interrupts locked: serve table evictions here too */
+	z_hexagon_mem_domain_evict_poll();
+#endif
 	hexagon_vm_yield();
 }
 
@@ -132,6 +139,9 @@ FUNC_NORETURN FUNC_NO_STACK_PROTECTOR void z_hexagon_secondary_c(void)
 
 #ifdef CONFIG_SMP
 	z_hexagon_cpu_local_init(start_args.local);
+#ifdef CONFIG_USERSPACE
+	z_hexagon_mem_domain_cpu_init();
+#endif
 	ipi_init_local();
 #endif
 	start_args.fn(start_args.arg);
