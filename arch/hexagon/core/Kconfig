@@ -71,9 +71,20 @@ config HEXAGON_MMU
 	select SRAM_REGION_PERMISSIONS
 	help
 	  Enable memory management unit support for the Hexagon architecture.
-	  The HVM/H2 hypervisor maintains a single flat identity-mapped page
-	  table, so mappings require virt == phys and KERNEL_DIRECT_MAP is
-	  mandatory here.
+	  The kernel image is identity mapped at boot. Later mappings from
+	  k_mem_map(), k_mem_map_phys_bare() and device MMIO go to a runtime
+	  linear list and may have virt != phys.
+
+config HEXAGON_MMU_DIRECT_MAP_ENTRIES
+	int "Linear entries for direct mappings outside KERNEL_VM"
+	depends on HEXAGON_MMU
+	default 32
+	help
+	  Runtime mappings live in one HVM linear list with one entry per
+	  page of KERNEL_VM, so mappings inside it never run out of entries.
+	  This adds entries for K_MEM_DIRECT_MAP mappings outside KERNEL_VM
+	  that the boot-time map does not already cover. Each takes one
+	  entry per naturally aligned 4 KB to 16 MB block. 16 bytes each.
 
 config HEXAGON_H2_KERNEL_BASE
 	hex "H2 hypervisor kernel image base address"

@@ -456,25 +456,48 @@ BUILD_ASSERT(!IS_ENABLED(CONFIG_SMP),
 static struct k_thread *hexagon_map_thread;
 
 /*
- * Fall back to the kernel map so the active list may be rewritten. It
- * never changes after boot, so its TLB entries stay.
+ * Bumped whenever a runtime mapping is removed or changed. vmclrmap()
+ * only flushes the installed map's ASID; a map whose generation lags
+ * behind invalidates its ASID on its next install.
+ */
+static uint32_t hexagon_map_gen;
+static uint32_t hexagon_kernel_map_gen;
+
+void hexagon_map_flushed(void)
+{
+	hexagon_map_gen++;
+	if (hexagon_map_thread == NULL) {
+		hexagon_kernel_map_gen = hexagon_map_gen;
+	} else {
+		hexagon_map_thread->arch.map_gen = hexagon_map_gen;
+	}
+}
+
+/*
+ * Fall back to the kernel map so the active list may be rewritten. Its
+ * own entries never change after boot; only runtime mappings can leave
+ * stale TLB entries in its ASID.
  */
 static void hexagon_mem_domain_uninstall(void)
 {
+	bool stale = hexagon_kernel_map_gen != hexagon_map_gen;
+
 	if (hexagon_map_thread == NULL) {
 		return;
 	}
 
 	if (hexagon_vm_newmap(hexagon_kernel_map, VM_TRANS_TYPE_LINEAR,
-			      VM_TLB_INVALIDATE_FALSE) != 0) {
+			      stale ? VM_TLB_INVALIDATE_TRUE : VM_TLB_INVALIDATE_FALSE) != 0) {
 		k_panic();
 	}
+	hexagon_kernel_map_gen = hexagon_map_gen;
 	hexagon_map_thread = NULL;
 }
 
 /*
  * Rebuild domain->arch.list: one dense run of entries per non-empty,
- * page-aligned partition, then a chain link to the shared fixed tail.
+ * page-aligned partition, then a chain link to the runtime mappings
+ * and the fixed tail.
  * Each member user thread reaches it through its own map
  * (hexagon_thread_map_rebuild()).
  *
@@ -515,7 +538,7 @@ static void hexagon_mem_domain_rebuild(struct k_mem_domain *domain, int skip_id)
 			hexagon_partition_attr_to_xwru(part->attr), __HEXAGON_C_WB_L2);
 	}
 
-	hexagon_linear_entry_set_chain(&list[idx], hexagon_fixed_tail);
+	hexagon_linear_entry_set_chain(&list[idx], hexagon_dyn_link);
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&domain->thread_mem_domain_list, thread,
 				     mem_domain_info.thread_mem_domain_node) {
@@ -660,6 +683,7 @@ static void hexagon_mem_domain_enter(struct k_thread *thread)
 void z_hexagon_mem_domain_switch(void)
 {
 	struct k_thread *thread = k_sched_current_thread_query();
+	bool stale;
 
 	if (thread->arch.priv_level == 0 || thread->mem_domain_info.mem_domain == NULL) {
 		hexagon_mem_domain_uninstall();
@@ -670,13 +694,14 @@ void z_hexagon_mem_domain_switch(void)
 		return;
 	}
 
+	stale = thread->arch.map_stale != 0U || thread->arch.map_gen != hexagon_map_gen;
 	if (hexagon_vm_newmap(thread->arch.map, VM_TRANS_TYPE_LINEAR,
-			      thread->arch.map_stale ? VM_TLB_INVALIDATE_TRUE
-						     : VM_TLB_INVALIDATE_FALSE) != 0) {
+			      stale ? VM_TLB_INVALIDATE_TRUE : VM_TLB_INVALIDATE_FALSE) != 0) {
 		k_panic();
 	}
 
 	thread->arch.map_stale = 0;
+	thread->arch.map_gen = hexagon_map_gen;
 	hexagon_map_thread = thread;
 }
 

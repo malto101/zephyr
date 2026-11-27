@@ -143,10 +143,12 @@ struct _thread_arch {
 	/*
 	 * Linear map installed while this thread runs in user mode: its own
 	 * stack, then a chain entry to its memory domain's list. map_stale
-	 * is set whenever either changes, so the next install invalidates
-	 * this map's H2 ASID.
+	 * is set whenever either changes, and map_gen lags behind once a
+	 * runtime mapping is removed, so the next install invalidates this
+	 * map's HVM ASID.
 	 */
 	uint8_t map_stale;
+	uint32_t map_gen;
 	struct hexagon_linear_entry map[CONFIG_HEXAGON_USER_STACK_ENTRIES + 1] __aligned(8);
 
 	/*
