@@ -11,3 +11,14 @@ tests:
     extra_configs:
       - CONFIG_SCHED_CPU_MASK=y
       - CONFIG_IRQ_OFFLOAD=y
+  arch.hexagon.smp_hvm.smp.mmu:
+    platform_allow: qemu_hexagon/qemu_hexagon_virt/smp
+    extra_configs:
+      - CONFIG_SCHED_CPU_MASK=y
+      - CONFIG_HEXAGON_MMU=y
+  arch.hexagon.smp_hvm.smp.userspace:
+    platform_allow: qemu_hexagon/qemu_hexagon_virt/smp
+    extra_configs:
+      - CONFIG_SCHED_CPU_MASK=y
+      - CONFIG_HEXAGON_MMU=y
+      - CONFIG_USERSPACE=y
