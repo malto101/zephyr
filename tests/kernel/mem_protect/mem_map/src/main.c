@@ -456,6 +456,8 @@ ZTEST(mem_map_api, test_k_mem_map_unmap)
 		if (repeat == 10) {
 			/* Should fault since mapped is no longer accessible */
 			expect_fault = true;
+			/* Keep the flag store out of the faulting instruction bundle. */
+			compiler_barrier();
 			mapped[0] = 42;
 			printk("shouldn't get here\n");
 			ztest_test_fail();

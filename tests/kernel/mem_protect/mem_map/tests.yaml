@@ -8,6 +8,7 @@ tests:
     arch_allow:
       - arm
       - arm64
+      - hexagon
       - x86
     filter: CONFIG_MMU and not CONFIG_X86_64
     extra_sections: _TRANSPLANTED_FUNC
