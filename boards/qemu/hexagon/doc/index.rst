@@ -47,7 +47,9 @@ run with ``-smp cpus=2``. HVM allows up to four CPUs; set
 
 The variant has the following restrictions:
 
-* :kconfig:option:`CONFIG_USERSPACE` and HVX are not supported with SMP.
+* HVX is not supported with SMP.
+* With :kconfig:option:`CONFIG_USERSPACE`, threads of one memory domain share its page table,
+  so :kconfig:option:`CONFIG_MEM_DOMAIN_ISOLATED_STACKS` is not available.
 * QEMU instruction counting is disabled, so timing is not deterministic.
 
 Known Problems or Limitations
