@@ -8,25 +8,18 @@
  * @file
  * @brief Hexagon runtime memory mappings
  *
- * The kernel image, console and HVM windows are mapped once at boot by
- * mmu.c. Mappings made later (k_mem_map(), k_mem_map_phys_bare(),
- * device MMIO) go to one linear list that every installed map reaches
- * through hexagon_dyn_link, ahead of hexagon_fixed_tail:
- *
- *   kernel map / domain list --> hexagon_dyn_link --> dyn list --> fixed tail
- *
- * HVM walks the installed lists on every STLB miss, so the list is never
- * edited in place: each change fills the other buffer and then swaps
- * hexagon_dyn_link to it. Entries stay disjoint from each other and from
- * the boot-time map, because ctlbw refuses a TLB entry overlapping one
- * already present and the miss then repeats forever.
+ * k_mem_map(), k_mem_map_phys_bare() and device MMIO write 4KB PTEs into
+ * the kernel page table, see mmu.c. KERNEL_VM pages are copied into every
+ * memory domain's own L2 tables; elsewhere the L2 tables come from a pool
+ * and are shared by every domain.
  *
  * A new translation needs no TLB maintenance: HVM caches no misses.
  * Removing or changing one does. vmclrmap() only flushes the installed
- * map's ASID, so hexagon_map_flushed() makes every other map flush its
- * ASID on its next install.
+ * table's ASID, so hexagon_map_flushed() makes every other table flush
+ * its ASID on its next install.
  */
 
+#include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/kernel/mm.h>
 #include <zephyr/spinlock.h>
@@ -38,156 +31,111 @@
 
 #include <hexagon_mmu.h>
 
-/*
- * Entries are disjoint and each covers at least one page, so one per
- * KERNEL_VM page is enough there: the kernel treats a failed
- * arch_mem_map() as fatal.
- */
-#define HEXAGON_DYN_ENTRIES                                                                        \
-	(CONFIG_KERNEL_VM_SIZE / CONFIG_MMU_PAGE_SIZE + CONFIG_HEXAGON_MMU_DIRECT_MAP_ENTRIES)
+#ifdef CONFIG_USERSPACE
+#include <kuser.h>
+/* Domain tables are updated together with the kernel's. */
+#define hexagon_mmu_lock z_mem_domain_lock
+#else
+static struct k_spinlock hexagon_mmu_lock;
+#endif
 
-struct hexagon_linear_entry hexagon_dyn_link[1] __aligned(8);
+static uint32_t hexagon_l2_pool[CONFIG_HEXAGON_MMU_L2_TABLES][HEXAGON_MMU_PT_ENTRIES]
+	__aligned(HEXAGON_MMU_PT_ALIGN);
+static uint32_t hexagon_l2_pool_used;
 
-/* Two buffers: the one hexagon_dyn_link points at, and the next one. */
-static struct hexagon_linear_entry hexagon_dyn_lists[2][HEXAGON_DYN_ENTRIES + 1] __aligned(8);
-static uint32_t hexagon_dyn_active;
-static struct k_spinlock hexagon_dyn_lock;
-
-static inline uintptr_t hexagon_entry_va(const struct hexagon_linear_entry *entry)
+static bool hexagon_slot_is_invalid(uint32_t slot)
 {
-	return (uintptr_t)(entry->high & 0xFFFFFU) << 12;
+	return (hexagon_kernel_l1[slot] & __HVM_PDE_S_MASK) == __HVM_PDE_S_INVALID;
 }
 
-static inline uintptr_t hexagon_entry_pa(const struct hexagon_linear_entry *entry)
+/* L2 tables [va, end) still needs, or -EINVAL if it touches a block. */
+static int hexagon_l2_tables_needed(uintptr_t va, uintptr_t end)
 {
-	return (uintptr_t)(entry->low & 0xFFFFFFU) << 12;
+	int needed = 0;
+
+	for (uintptr_t slot_va = ROUND_DOWN(va, BIT(HEXAGON_MMU_SLOT_SHIFT)); slot_va < end;
+	     slot_va += BIT(HEXAGON_MMU_SLOT_SHIFT)) {
+		uint32_t slot = slot_va >> HEXAGON_MMU_SLOT_SHIFT;
+
+		if (hexagon_slot_is_invalid(slot)) {
+			needed++;
+		} else if (hexagon_pde_l2(hexagon_kernel_l1[slot]) == NULL) {
+			return -EINVAL;
+		}
+		if (slot_va + BIT(HEXAGON_MMU_SLOT_SHIFT) == 0U) {
+			break;
+		}
+	}
+
+	return needed;
 }
 
-static inline bool hexagon_entry_is_mapping(const struct hexagon_linear_entry *entry)
+static uint32_t *hexagon_kernel_pte_alloc(uintptr_t va)
 {
-	return (entry->high & __HVM_LINEAR_CHAIN) == 0U &&
-	       (entry->low != 0U || entry->high != 0U);
+	uint32_t slot = va >> HEXAGON_MMU_SLOT_SHIFT;
+
+	if (hexagon_slot_is_invalid(slot)) {
+		uint32_t *l2 = hexagon_l2_pool[hexagon_l2_pool_used++];
+
+		(void)memset(l2, 0, sizeof(hexagon_l2_pool[0]));
+		barrier_dmem_fence_full();
+		hexagon_kernel_l1[slot] = (uint32_t)(uintptr_t)l2 | __HVM_PDE_S_4KB;
+#ifdef CONFIG_USERSPACE
+		hexagon_mem_domain_sync_l1(slot);
+#endif
+	}
+
+	return hexagon_kernel_pte(va);
 }
 
-void hexagon_dyn_map_init(void)
+/* Write pte for each page of [va, va + size), pa advancing unless pte is 0. */
+static void hexagon_kernel_pte_update(uintptr_t va, size_t size, uint32_t pte)
 {
-	k_spinlock_key_t key = k_spin_lock(&hexagon_dyn_lock);
+	bool flushed = false;
 
-	hexagon_linear_entry_set_chain(&hexagon_dyn_lists[hexagon_dyn_active][0],
-				       hexagon_fixed_tail);
-	hexagon_linear_entry_set_chain(hexagon_dyn_link, hexagon_dyn_lists[hexagon_dyn_active]);
-	k_spin_unlock(&hexagon_dyn_lock, key);
-}
+	for (size_t off = 0; off < size; off += CONFIG_MMU_PAGE_SIZE) {
+		uintptr_t page = va + off;
+		uint32_t *slot = hexagon_kernel_pte_alloc(page);
+		uint32_t old = *slot;
+		uint32_t new = (pte == 0U) ? 0U : pte + off;
 
-/*
- * Publish the active list minus [va, va + size), plus va -> pa over that
- * range if map is true. On success *flush_start and *flush_end bound every
- * entry removed or cut, empty if none was.
- */
-static int hexagon_dyn_update(uintptr_t va, size_t size, bool map, uintptr_t pa, uint32_t xwru,
-			      uint32_t cache_attr, uint32_t extra_high, uintptr_t *flush_start,
-			      uintptr_t *flush_end)
-{
-	const struct hexagon_linear_entry *src = hexagon_dyn_lists[hexagon_dyn_active];
-	struct hexagon_linear_entry *dst = hexagon_dyn_lists[hexagon_dyn_active ^ 1U];
-	uintptr_t end = va + size;
-	uint32_t n = 0;
-	int ret;
-
-	*flush_start = UINTPTR_MAX;
-	*flush_end = 0;
-
-	for (; hexagon_entry_is_mapping(src); src++) {
-		uintptr_t e_va = hexagon_entry_va(src);
-		uintptr_t e_end = hexagon_linear_entry_end(src);
-		uintptr_t e_pa = hexagon_entry_pa(src);
-		uint32_t e_xwru = hexagon_linear_entry_xwru(src);
-		uint32_t e_cache = (src->low >> 24) & 0x7U;
-		uint32_t e_extra = src->high & __HVM_LINEAR_SHARED;
-
-		if (e_end <= va || e_va >= end) {
-			if (n >= HEXAGON_DYN_ENTRIES) {
-				return -ENOMEM;
-			}
-			dst[n++] = *src;
+		if (old == new) {
 			continue;
 		}
-
-		*flush_start = MIN(*flush_start, e_va);
-		*flush_end = MAX(*flush_end, e_end);
-
-		if (e_va < va) {
-			ret = hexagon_decompose_mapping(&dst[n], HEXAGON_DYN_ENTRIES - n, e_va,
-							e_pa, va - e_va, e_xwru, e_cache, e_extra);
-			if (ret < 0) {
-				return ret;
-			}
-			n += ret;
-		}
-		if (e_end > end) {
-			ret = hexagon_decompose_mapping(&dst[n], HEXAGON_DYN_ENTRIES - n, end,
-							e_pa + (end - e_va), e_end - end, e_xwru,
-							e_cache, e_extra);
-			if (ret < 0) {
-				return ret;
-			}
-			n += ret;
-		}
-	}
-
-	if (map) {
-		ret = hexagon_decompose_mapping(&dst[n], HEXAGON_DYN_ENTRIES - n, va, pa, size,
-						xwru, cache_attr, extra_high);
-		if (ret < 0) {
-			return ret;
-		}
-		n += ret;
-	}
-
-	hexagon_linear_entry_set_chain(&dst[n], hexagon_fixed_tail);
-
-	/* The new list must be complete before HVM can reach it. */
-	barrier_dmem_fence_full();
-	*(volatile uint32_t *)&hexagon_dyn_link[0].low = (uint32_t)(uintptr_t)dst;
-	barrier_dmem_fence_full();
-	hexagon_dyn_active ^= 1U;
-
-	return 0;
-}
-
-static void hexagon_dyn_flush(uintptr_t start, uintptr_t end)
-{
-	if (start >= end) {
-		return;
-	}
-
-	/*
-	 * One page per call: vmclrmap() with a length above 1 flushes the
-	 * whole ASID from the TLB, not just the range.
-	 */
-	for (uintptr_t va = start; va < end; va += CONFIG_MMU_PAGE_SIZE) {
-		(void)hexagon_vm_clrmap((void *)va, 1);
-	}
+		*slot = new;
 #ifdef CONFIG_USERSPACE
-	hexagon_map_flushed();
+		if (hexagon_va_in_vm(page)) {
+			hexagon_mem_domain_sync_page(page);
+		}
+#endif
+		if (old != 0U) {
+			barrier_dmem_fence_full();
+			(void)hexagon_vm_clrmap((void *)page, 1);
+			flushed = true;
+		}
+	}
+
+#ifdef CONFIG_USERSPACE
+	if (flushed) {
+		hexagon_map_flushed();
+	}
+#else
+	ARG_UNUSED(flushed);
 #endif
 }
 
 int arch_mem_map(void *virt, uintptr_t phys, size_t size, uint32_t flags)
 {
 	uintptr_t va = (uintptr_t)virt;
-	uint32_t xwru = __HVM_LINEAR_R;
+	uint32_t perms = __HVM_PTE_R;
 	uint32_t cache_attr;
-	uint32_t extra_high = 0;
-	uintptr_t flush_start;
-	uintptr_t flush_end;
 	k_spinlock_key_t key;
 	int ret;
 
 	if (size == 0) {
 		return 0;
 	}
-	if (((va | phys | size) & (CONFIG_MMU_PAGE_SIZE - 1)) != 0) {
+	if (((va | phys | size) & (CONFIG_MMU_PAGE_SIZE - 1)) != 0 || va + size < va) {
 		return -EINVAL;
 	}
 
@@ -198,20 +146,20 @@ int arch_mem_map(void *virt, uintptr_t phys, size_t size, uint32_t flags)
 	}
 
 	if ((flags & K_MEM_PERM_RW) != 0U) {
-		xwru |= __HVM_LINEAR_W;
+		perms |= __HVM_PTE_W;
 	}
 	if ((flags & K_MEM_PERM_EXEC) != 0U) {
-		xwru |= __HVM_LINEAR_X;
+		perms |= __HVM_PTE_X;
 	}
 	if ((flags & K_MEM_PERM_USER) != 0U) {
-		xwru |= __HVM_LINEAR_U;
+		perms |= __HVM_PTE_U;
 	}
 
 	switch (flags & K_MEM_CACHE_MASK) {
 	case K_MEM_CACHE_NONE:
 		/* As the console window: device memory, no guestmap. */
 		cache_attr = __HEXAGON_C_DEV;
-		extra_high = __HVM_LINEAR_SHARED;
+		perms |= __HVM_PTE_SHARED;
 		break;
 	case K_MEM_CACHE_WT:
 		cache_attr = __HEXAGON_C_WT_L2;
@@ -221,68 +169,59 @@ int arch_mem_map(void *virt, uintptr_t phys, size_t size, uint32_t flags)
 		break;
 	}
 
-	key = k_spin_lock(&hexagon_dyn_lock);
-	ret = hexagon_dyn_update(va, size, true, phys, xwru, cache_attr, extra_high, &flush_start,
-				 &flush_end);
-	if (ret == 0) {
-		hexagon_dyn_flush(flush_start, flush_end);
+	key = k_spin_lock(&hexagon_mmu_lock);
+	ret = hexagon_l2_tables_needed(va, va + size);
+	if (ret > (int)(CONFIG_HEXAGON_MMU_L2_TABLES - hexagon_l2_pool_used)) {
+		ret = -ENOMEM;
 	}
-	k_spin_unlock(&hexagon_dyn_lock, key);
+	if (ret >= 0) {
+		hexagon_kernel_pte_update(va, size, hexagon_pte(phys, perms, cache_attr));
+		ret = 0;
+	}
+	k_spin_unlock(&hexagon_mmu_lock, key);
 
 	return ret;
 }
 
 int arch_mem_unmap(void *addr, size_t size)
 {
-	uintptr_t flush_start;
-	uintptr_t flush_end;
+	uintptr_t va = ROUND_DOWN((uintptr_t)addr, CONFIG_MMU_PAGE_SIZE);
 	k_spinlock_key_t key;
-	int ret;
 
-	if (size == 0) {
+	size = ROUND_UP((uintptr_t)addr + size, CONFIG_MMU_PAGE_SIZE) - va;
+	if (size == 0 || hexagon_fixed_map_contains(va, size) != 0) {
 		return 0;
 	}
 
-	key = k_spin_lock(&hexagon_dyn_lock);
-	ret = hexagon_dyn_update((uintptr_t)addr, size, false, 0, 0, 0, 0, &flush_start,
-				 &flush_end);
-	if (ret == 0) {
-		hexagon_dyn_flush(flush_start, flush_end);
+	key = k_spin_lock(&hexagon_mmu_lock);
+	for (size_t off = 0; off < size; off += CONFIG_MMU_PAGE_SIZE) {
+		if (hexagon_kernel_pte(va + off) != NULL) {
+			hexagon_kernel_pte_update(va + off, CONFIG_MMU_PAGE_SIZE, 0U);
+		}
 	}
-	k_spin_unlock(&hexagon_dyn_lock, key);
+	k_spin_unlock(&hexagon_mmu_lock, key);
 
-	return ret;
+	return 0;
 }
 
 int arch_page_phys_get(void *virt, uintptr_t *phys)
 {
-	uintptr_t va = ROUND_DOWN((uintptr_t)virt, CONFIG_MMU_PAGE_SIZE);
-	const struct hexagon_linear_entry *entry;
-	uintptr_t pa = 0;
-	int ret = -EFAULT;
-	k_spinlock_key_t key;
+	uintptr_t va = (uintptr_t)virt;
+	uint32_t pde = hexagon_kernel_l1[va >> HEXAGON_MMU_SLOT_SHIFT];
+	uint32_t pte = hexagon_kernel_pte_get(va);
+	uintptr_t page_mask;
 
-	if (hexagon_fixed_map_contains(va, CONFIG_MMU_PAGE_SIZE) > 0) {
-		pa = va;
-		ret = 0;
-	} else {
-		key = k_spin_lock(&hexagon_dyn_lock);
-		for (entry = hexagon_dyn_lists[hexagon_dyn_active]; hexagon_entry_is_mapping(entry);
-		     entry++) {
-			if (va >= hexagon_entry_va(entry) && va < hexagon_linear_entry_end(entry)) {
-				pa = hexagon_entry_pa(entry) + (va - hexagon_entry_va(entry));
-				ret = 0;
-				break;
-			}
-		}
-		k_spin_unlock(&hexagon_dyn_lock, key);
+	if (pte == 0U) {
+		return -EFAULT;
 	}
 
-	if (ret == 0 && phys != NULL) {
-		*phys = pa + ((uintptr_t)virt - va);
+	page_mask = (hexagon_pde_l2(pde) != NULL) ? (CONFIG_MMU_PAGE_SIZE - 1U)
+						  : (BIT(HEXAGON_MMU_SLOT_SHIFT) - 1U);
+	if (phys != NULL) {
+		*phys = (pte & ~page_mask) | (va & page_mask);
 	}
 
-	return ret;
+	return 0;
 }
 
 #endif /* CONFIG_MMU */

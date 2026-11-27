@@ -9,11 +9,14 @@
  * @brief Hexagon userspace support
  */
 
+#include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/arch/hexagon/arch.h>
 #include <zephyr/internal/syscall_handler.h>
 #include <zephyr/linker/linker-defs.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/barrier.h>
+#include <zephyr/sys/slist.h>
 #include <kernel_internal.h>
 #include <hexagon_vm.h>
 #include <hexagon_mmu.h>
@@ -27,7 +30,8 @@ LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
  * switch.S, and event_handlers.S.
  */
 void z_hexagon_mem_domain_switch(void);
-static void hexagon_mem_domain_enter(struct k_thread *thread);
+static uint32_t hexagon_domain_pte(const struct k_mem_domain *domain,
+				   const struct k_thread *owner, uintptr_t va, int skip_id);
 
 /* [start, start + size) inside [base, base + len), overflow-safe. */
 static inline bool hexagon_range_within(uintptr_t start, size_t size, uintptr_t base, size_t len)
@@ -61,18 +65,15 @@ static bool hexagon_supervisor_buffer_ok(const struct k_thread *thread, uintptr_
 }
 
 /*
- * Walk the calling thread's own installed map -- the same one H2
- * enforces on its user-mode accesses, so this check agrees with the
- * hardware by construction. That covers the thread's stack, its
- * domain's mappable partitions, and the fixed tail's U=1
- * text/rodata/console entries.
+ * Check the calling thread's domain translation, the same one HVM
+ * enforces on its user-mode accesses: its stack, its domain's mappable
+ * partitions and the kernel's U=1 text, rodata and console pages.
  */
 int arch_buffer_validate(const void *addr, size_t size, int write)
 {
 	struct k_thread *thread = k_current_get();
-	uint32_t need = __HVM_LINEAR_U | ((write != 0) ? __HVM_LINEAR_W : __HVM_LINEAR_R);
+	uint32_t need = __HVM_PTE_U | ((write != 0) ? __HVM_PTE_W : __HVM_PTE_R);
 	uintptr_t start = (uintptr_t)addr;
-	uintptr_t va;
 	uintptr_t last;
 	k_spinlock_key_t key;
 	int ret = 0;
@@ -81,13 +82,12 @@ int arch_buffer_validate(const void *addr, size_t size, int write)
 		return -EPERM;
 	}
 	/* Treat a zero-length request like a one-byte one: still confirm addr's page is mapped. */
-	last = start + ((size != 0U) ? (size - 1U) : 0U);
+	last = ROUND_DOWN(start + ((size != 0U) ? (size - 1U) : 0U), CONFIG_MMU_PAGE_SIZE);
 
 	/*
-	 * Only a thread that has dropped to user mode has a map. Also
-	 * hold z_mem_domain_lock across the walk: trap0 re-enables guest
-	 * interrupts, so a partition add/remove could otherwise rewrite
-	 * the domain list under it.
+	 * Hold z_mem_domain_lock across the walk: trap0 re-enables guest
+	 * interrupts, so a partition add/remove could otherwise change the
+	 * domain under it.
 	 */
 	key = k_spin_lock(&z_mem_domain_lock);
 
@@ -96,22 +96,18 @@ int arch_buffer_validate(const void *addr, size_t size, int write)
 		goto out;
 	}
 
-	va = start;
-	while (true) {
-		const struct hexagon_linear_entry *entry =
-			hexagon_linear_lookup(thread->arch.map, va);
-		uintptr_t entry_end;
+	struct k_mem_domain *domain = thread->mem_domain_info.mem_domain;
 
-		if (entry == NULL || (hexagon_linear_entry_xwru(entry) & need) != need) {
+	for (uintptr_t va = ROUND_DOWN(start, CONFIG_MMU_PAGE_SIZE);; va += CONFIG_MMU_PAGE_SIZE) {
+		uint32_t pte = hexagon_domain_pte(domain, thread, va, -1);
+
+		if ((pte & need) != need) {
 			ret = -EPERM;
 			break;
 		}
-
-		entry_end = hexagon_linear_entry_end(entry);
-		if (entry_end == 0U || last < entry_end) {
+		if (va == last) {
 			break;
 		}
-		va = entry_end;
 	}
 
 out:
@@ -261,13 +257,11 @@ void arch_user_mode_enter(k_thread_entry_t user_entry, void *p1, void *p2, void 
 	 * exit, even one unrelated to this thread.
 	 */
 	thread->arch.priv_level = 1;
-	hexagon_mem_domain_enter(thread);
 
 	/*
-	 * Install this thread's hardware memory-domain map before the
-	 * privilege drop below -- the first user-mode access must already
-	 * be bound by the domain's linear map, not the permissive boot
-	 * table.
+	 * Install this thread's memory domain table before the privilege
+	 * drop below: the first user-mode access must already be bound by
+	 * it.
 	 */
 	z_hexagon_mem_domain_switch();
 
@@ -374,22 +368,23 @@ int arch_mem_domain_max_partitions_get(void)
 
 /*
  * A partition, unlike a stack, is never rounded out: that would grant
- * user access to whatever shares its first and last pages. One that
- * isn't page-aligned is rejected and never mapped.
+ * user access to whatever shares its first and last pages. It must also
+ * lie in KERNEL_VM, the only range with per-domain L2 tables.
  */
-static bool hexagon_partition_is_aligned(const struct k_mem_partition *part)
+static bool hexagon_partition_is_placed(const struct k_mem_partition *part)
 {
-	return ((part->start | part->size) & (CONFIG_MMU_PAGE_SIZE - 1U)) == 0U;
+	return ((part->start | part->size) & (CONFIG_MMU_PAGE_SIZE - 1U)) == 0U &&
+	       part->start >= HEXAGON_MMU_VM_START &&
+	       part->size <= HEXAGON_MMU_VM_END - part->start;
 }
 
 #define HEXAGON_PARTITION_IS_PRIV_WRITABLE(attr) ((attr) & 0x08U) /* bit 3 */
 #define HEXAGON_PARTITION_IS_PRIV_READABLE(attr) ((attr) & 0x18U) /* bits 3-4 */
 
 /*
- * A user-accessible partition's single HVM entry binds the kernel too,
- * see hexagon_partition_attr_to_xwru(), so the kernel cannot be given
- * write access the user lacks. Such a partition is rejected and never
- * mapped.
+ * A user-accessible partition's PTE binds the kernel too, see
+ * hexagon_partition_perms(), so the kernel cannot be given write access
+ * the user lacks. Such a partition is rejected and never mapped.
  */
 static bool hexagon_partition_attr_is_supported(k_mem_partition_attr_t attr)
 {
@@ -402,62 +397,59 @@ static bool hexagon_partition_attr_is_supported(k_mem_partition_attr_t attr)
 
 static bool hexagon_partition_is_mappable(const struct k_mem_partition *part)
 {
-	return hexagon_partition_is_aligned(part) &&
+	return hexagon_partition_is_placed(part) &&
 	       hexagon_partition_attr_is_supported(part->attr);
 }
 
 /*
  * HVM has one R/W/X set per page plus U. Guest mode ignores U but enforces
- * R/W/X. H2 uses the installed map on kernel-mode TLB misses too, so ISR
- * and syscall accesses obey the same permissions.
+ * R/W/X, so ISR and syscall accesses obey the same permissions.
  *
  * Partition permissions map as follows (X always follows the partition):
  *
  *   Partition type     U   R/W bits come from
  *   User-accessible    1   User permissions
  *   No user access     0   Privileged permissions
- *
- * A user-accessible partition has one permission set for both modes, so
- * hexagon_partition_attr_is_supported() rejects it if privileged write
- * access exceeds user write access. With U clear, a no-user-access
- * partition remains available to the kernel but not user mode.
  */
-static uint32_t hexagon_partition_attr_to_xwru(k_mem_partition_attr_t attr)
+static uint32_t hexagon_partition_perms(k_mem_partition_attr_t attr)
 {
-	uint32_t xwru = 0U;
+	uint32_t perms = 0U;
 
 	if (K_MEM_PARTITION_IS_READABLE(attr) || K_MEM_PARTITION_IS_WRITABLE(attr)) {
-		xwru |= __HVM_LINEAR_U;
+		perms |= __HVM_PTE_U;
 		if (K_MEM_PARTITION_IS_READABLE(attr)) {
-			xwru |= __HVM_LINEAR_R;
+			perms |= __HVM_PTE_R;
 		}
 		if (K_MEM_PARTITION_IS_WRITABLE(attr)) {
-			xwru |= __HVM_LINEAR_W;
+			perms |= __HVM_PTE_W;
 		}
 	} else {
 		if (HEXAGON_PARTITION_IS_PRIV_READABLE(attr)) {
-			xwru |= __HVM_LINEAR_R;
+			perms |= __HVM_PTE_R;
 		}
 		if (HEXAGON_PARTITION_IS_PRIV_WRITABLE(attr)) {
-			xwru |= __HVM_LINEAR_W;
+			perms |= __HVM_PTE_W;
 		}
 	}
 	if (K_MEM_PARTITION_IS_EXECUTABLE(attr)) {
-		xwru |= __HVM_LINEAR_X;
+		perms |= __HVM_PTE_X;
 	}
 
-	return xwru;
+	return perms;
 }
 
 BUILD_ASSERT(!IS_ENABLED(CONFIG_SMP),
-	     "Hexagon tracks one installed memory map: SMP is not supported");
+	     "Hexagon tracks one installed page table and stack owner: SMP is not supported");
 
-/* User thread whose map is installed. NULL means hexagon_kernel_map is active. */
-static struct k_thread *hexagon_map_thread;
+/* Domain whose table is installed. NULL means hexagon_kernel_l1 is. */
+static struct k_mem_domain *hexagon_installed_domain;
+
+/* Every initialized domain, to propagate kernel table changes. */
+static sys_slist_t hexagon_domains;
 
 /*
- * Bumped whenever a runtime mapping is removed or changed. vmclrmap()
- * only flushes the installed map's ASID; a map whose generation lags
+ * Bumped whenever a translation is removed or changed. vmclrmap() only
+ * flushes the installed table's ASID; a table whose generation lags
  * behind invalidates its ASID on its next install.
  */
 static uint32_t hexagon_map_gen;
@@ -466,143 +458,185 @@ static uint32_t hexagon_kernel_map_gen;
 void hexagon_map_flushed(void)
 {
 	hexagon_map_gen++;
-	if (hexagon_map_thread == NULL) {
+	if (hexagon_installed_domain == NULL) {
 		hexagon_kernel_map_gen = hexagon_map_gen;
 	} else {
-		hexagon_map_thread->arch.map_gen = hexagon_map_gen;
+		hexagon_installed_domain->arch.gen = hexagon_map_gen;
 	}
 }
 
-/*
- * Fall back to the kernel map so the active list may be rewritten. Its
- * own entries never change after boot; only runtime mappings can leave
- * stale TLB entries in its ASID.
- */
-static void hexagon_mem_domain_uninstall(void)
+static void hexagon_table_install(uint32_t *l1, uint32_t *gen, bool stale)
 {
-	bool stale = hexagon_kernel_map_gen != hexagon_map_gen;
-
-	if (hexagon_map_thread == NULL) {
-		return;
-	}
-
-	if (hexagon_vm_newmap(hexagon_kernel_map, VM_TRANS_TYPE_LINEAR,
+	stale = stale || *gen != hexagon_map_gen;
+	if (hexagon_vm_newmap(l1, VM_TRANS_TYPE_TABLE,
 			      stale ? VM_TLB_INVALIDATE_TRUE : VM_TLB_INVALIDATE_FALSE) != 0) {
 		k_panic();
 	}
-	hexagon_kernel_map_gen = hexagon_map_gen;
-	hexagon_map_thread = NULL;
+	*gen = hexagon_map_gen;
+}
+
+static void hexagon_kernel_table_install(void)
+{
+	if (hexagon_installed_domain != NULL) {
+		hexagon_table_install(hexagon_kernel_l1, &hexagon_kernel_map_gen, false);
+		hexagon_installed_domain = NULL;
+	}
+}
+
+static void hexagon_domain_table_install(struct k_mem_domain *domain)
+{
+	hexagon_table_install(domain->arch.l1, &domain->arch.gen, domain->arch.stale);
+	domain->arch.stale = false;
+	hexagon_installed_domain = domain;
+}
+
+static bool hexagon_thread_stack_contains(const struct k_thread *thread, uintptr_t va)
+{
+	uintptr_t start = ROUND_DOWN(thread->stack_info.start, CONFIG_MMU_PAGE_SIZE);
+	uintptr_t end = ROUND_UP(thread->stack_info.start + thread->stack_info.size,
+				 CONFIG_MMU_PAGE_SIZE);
+
+	return va >= start && va < end;
 }
 
 /*
- * Rebuild domain->arch.list: one dense run of entries per non-empty,
- * page-aligned partition, then a chain link to the runtime mappings
- * and the fixed tail.
- * Each member user thread reaches it through its own map
- * (hexagon_thread_map_rebuild()).
- *
- * Entries are packed densely: a zero-valued gap entry would look like
- * the all-zero terminator to the HVM walker and truncate the list.
- *
- * H2 walks the installed list on every TLB miss, kernel-mode ones
- * included, so never rewrite it in place while installed. Every member
- * map is marked stale so its next install invalidates its ASID.
- *
- * Called with z_mem_domain_lock held.
+ * What domain's table maps va to while owner runs in user mode: owner's
+ * stack, else the first mappable partition other than skip_id, else the
+ * kernel's PTE. Overrides keep the kernel's frame and cache attributes,
+ * so a partition over unmapped memory stays unmapped.
  */
-static void hexagon_mem_domain_rebuild(struct k_mem_domain *domain, int skip_id)
+static uint32_t hexagon_domain_pte(const struct k_mem_domain *domain,
+				   const struct k_thread *owner, uintptr_t va, int skip_id)
 {
-	struct hexagon_linear_entry *list = domain->arch.list;
-	uint32_t idx = 0;
-	int remaining_partitions = domain->num_partitions;
-	struct k_thread *thread;
+	uint32_t pte = hexagon_kernel_pte_get(va);
+	int remaining = domain->num_partitions;
 
-	if (hexagon_map_thread != NULL &&
-	    hexagon_map_thread->mem_domain_info.mem_domain == domain) {
-		hexagon_mem_domain_uninstall();
+	if (pte == 0U || !hexagon_va_in_vm(va)) {
+		return pte;
 	}
 
-	for (int i = 0; remaining_partitions > 0 && i < CONFIG_MAX_DOMAIN_PARTITIONS; i++) {
+	if (owner != NULL && hexagon_thread_stack_contains(owner, va)) {
+		return (pte & ~HEXAGON_PTE_PERM_MASK) | __HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_U;
+	}
+
+	for (int i = 0; remaining > 0 && i < CONFIG_MAX_DOMAIN_PARTITIONS; i++) {
 		const struct k_mem_partition *part = &domain->partitions[i];
 
-		if (part->size == 0) {
+		if (part->size == 0U) {
 			continue;
 		}
-		remaining_partitions--;
-		if (i == skip_id || !hexagon_partition_is_mappable(part)) {
+		remaining--;
+		if (i == skip_id || !hexagon_partition_is_mappable(part) || va < part->start ||
+		    va - part->start >= part->size) {
 			continue;
 		}
 
-		idx += hexagon_decompose_region(
-			&list[idx], HEXAGON_MEM_DOMAIN_PARTITION_ENTRIES, part->start, part->size,
-			hexagon_partition_attr_to_xwru(part->attr), __HEXAGON_C_WB_L2);
+		return (pte & ~HEXAGON_PTE_PERM_MASK) | hexagon_partition_perms(part->attr);
 	}
 
-	hexagon_linear_entry_set_chain(&list[idx], hexagon_dyn_link);
+	return pte;
+}
 
-	SYS_DLIST_FOR_EACH_CONTAINER(&domain->thread_mem_domain_list, thread,
-				     mem_domain_info.thread_mem_domain_node) {
-		thread->arch.map_stale = 1;
+/*
+ * Recompute domain's PTEs over the KERNEL_VM part of [start, start +
+ * size). A changed translation leaves the TLB now if the table is
+ * installed, else on its next install.
+ *
+ * Called with z_mem_domain_lock held.
+ */
+static void hexagon_domain_update(struct k_mem_domain *domain, uintptr_t start, size_t size,
+				  int skip_id)
+{
+	uintptr_t va = MAX(ROUND_DOWN(start, CONFIG_MMU_PAGE_SIZE), HEXAGON_MMU_VM_START);
+	uintptr_t end = HEXAGON_MMU_VM_END;
+
+	if (start < end && size < end - start) {
+		end = ROUND_UP(start + size, CONFIG_MMU_PAGE_SIZE);
+	}
+
+	for (; va < end; va += CONFIG_MMU_PAGE_SIZE) {
+		uint32_t *pte = &domain->arch.l2[(va - HEXAGON_MMU_VM_START) >>
+						  HEXAGON_MMU_SLOT_SHIFT][hexagon_pt_index(va)];
+		uint32_t new = hexagon_domain_pte(domain, domain->arch.stack_owner, va, skip_id);
+		uint32_t old = *pte;
+
+		if (new == old) {
+			continue;
+		}
+		*pte = new;
+		if (old == 0U) {
+			continue;
+		}
+		if (hexagon_installed_domain == domain) {
+			barrier_dmem_fence_full();
+			(void)hexagon_vm_clrmap((void *)va, 1);
+		} else {
+			domain->arch.stale = true;
+		}
+	}
+}
+
+static void hexagon_domain_update_stack(struct k_mem_domain *domain,
+					const struct k_thread *thread)
+{
+	hexagon_domain_update(domain, thread->stack_info.start, thread->stack_info.size, -1);
+}
+
+void hexagon_mem_domain_sync_l1(uint32_t slot)
+{
+	struct arch_mem_domain *arch;
+
+	SYS_SLIST_FOR_EACH_CONTAINER(&hexagon_domains, arch, node) {
+		arch->l1[slot] = hexagon_kernel_l1[slot];
+	}
+}
+
+void hexagon_mem_domain_sync_page(uintptr_t va)
+{
+	struct arch_mem_domain *arch;
+
+	SYS_SLIST_FOR_EACH_CONTAINER(&hexagon_domains, arch, node) {
+		hexagon_domain_update(CONTAINER_OF(arch, struct k_mem_domain, arch), va,
+				      CONFIG_MMU_PAGE_SIZE, -1);
 	}
 }
 
 /*
- * Rebuild thread->arch.map: put the thread's stack first, then chain to
- * its domain list. Threads in one domain share its partitions and fixed
- * tail, but each has a private stack map and ASID:
- *
- *   Thread A: [A stack] --chain--+
- *                                 +--> [domain partitions] --> [fixed tail]
- *   Thread B: [B stack] --chain--+
- *
- * The stack comes first so it wins over an overlapping partition in the
- * first-match-wins walk. H2 keys ASIDs on the list address
- * (H2K_asid_table_inc()), so no thread maps another's stack.
- *
- * Called with z_mem_domain_lock held.
+ * Copy the kernel table: share its L2 tables and blocks outside
+ * KERNEL_VM, and give KERNEL_VM private L2 tables. The core adds the
+ * initial partitions next.
  */
-static void hexagon_thread_map_rebuild(struct k_thread *thread)
-{
-	struct hexagon_linear_entry *map = thread->arch.map;
-	uintptr_t stack_addr = thread->stack_info.start;
-	size_t stack_size = thread->stack_info.size;
-	uint32_t idx;
-
-	if (hexagon_map_thread == thread) {
-		hexagon_mem_domain_uninstall();
-	}
-
-	hexagon_align_region_to_page(&stack_addr, &stack_size);
-
-	idx = hexagon_decompose_region(map, CONFIG_HEXAGON_USER_STACK_ENTRIES, stack_addr,
-				       stack_size, __HVM_LINEAR_R | __HVM_LINEAR_W | __HVM_LINEAR_U,
-				       __HEXAGON_C_WB_L2);
-
-	hexagon_linear_entry_set_chain(&map[idx], thread->mem_domain_info.mem_domain->arch.list);
-	thread->arch.map_stale = 1;
-}
-
 int arch_mem_domain_init(struct k_mem_domain *domain)
 {
-	hexagon_mem_domain_rebuild(domain, -1);
+	struct arch_mem_domain *arch = &domain->arch;
+
+	(void)sys_slist_find_and_remove(&hexagon_domains, &arch->node);
+	if (hexagon_installed_domain == domain) {
+		hexagon_kernel_table_install();
+	}
+
+	(void)memcpy(arch->l1, hexagon_kernel_l1, sizeof(arch->l1));
+	for (uint32_t i = 0; i < HEXAGON_MMU_VM_SLOTS; i++) {
+		uint32_t slot = HEXAGON_MMU_VM_SLOT_FIRST + i;
+
+		(void)memcpy(arch->l2[i], hexagon_pde_l2(hexagon_kernel_l1[slot]),
+			     sizeof(arch->l2[i]));
+		arch->l1[slot] = (uint32_t)(uintptr_t)arch->l2[i] | __HVM_PDE_S_4KB;
+	}
+	arch->stack_owner = NULL;
+	/* HVM keys ASIDs on the table address: drop any earlier use of it. */
+	arch->stale = true;
+
+	sys_slist_append(&hexagon_domains, &arch->node);
 	return 0;
 }
 
-/*
- * The core only deinits a domain once every member thread is gone,
- * and each one already uninstalled its map on removal, so nothing
- * should still point at domain->arch.list. Uninstall anyway as a
- * belt-and-suspenders check, then zero the list to a bare terminator
- * so a stale chain into it maps nothing.
- */
 int arch_mem_domain_deinit(struct k_mem_domain *domain)
 {
-	if (hexagon_map_thread != NULL &&
-	    hexagon_map_thread->mem_domain_info.mem_domain == domain) {
-		hexagon_mem_domain_uninstall();
+	if (hexagon_installed_domain == domain) {
+		hexagon_kernel_table_install();
 	}
-
-	(void)memset(domain->arch.list, 0, sizeof(domain->arch.list));
+	(void)sys_slist_find_and_remove(&hexagon_domains, &domain->arch.node);
 	return 0;
 }
 
@@ -610,11 +644,11 @@ int arch_mem_domain_partition_add(struct k_mem_domain *domain, uint32_t partitio
 {
 	const struct k_mem_partition *part = &domain->partitions[partition_id];
 
-	/* The core has already recorded it. Rebuild skips it from now on. */
-	if (!hexagon_partition_is_aligned(part)) {
-		LOG_ERR("mem domain: partition %#lx/%#zx is not page-aligned",
+	/* The core has already recorded it. Updates skip it from now on. */
+	if (!hexagon_partition_is_placed(part)) {
+		LOG_ERR("mem domain: partition %#lx/%#zx is not page-aligned in KERNEL_VM",
 			(unsigned long)part->start, part->size);
-		__ASSERT(false, "partition is not page-aligned");
+		__ASSERT(false, "partition is not page-aligned in KERNEL_VM");
 		return -EINVAL;
 	}
 
@@ -625,84 +659,79 @@ int arch_mem_domain_partition_add(struct k_mem_domain *domain, uint32_t partitio
 		return -EINVAL;
 	}
 
-	hexagon_mem_domain_rebuild(domain, -1);
+	hexagon_domain_update(domain, part->start, part->size, -1);
 	return 0;
 }
 
 int arch_mem_domain_partition_remove(struct k_mem_domain *domain, uint32_t partition_id)
 {
+	const struct k_mem_partition *part = &domain->partitions[partition_id];
+
 	/* Called before the core clears partitions[partition_id]. */
-	hexagon_mem_domain_rebuild(domain, partition_id);
+	if (hexagon_partition_is_mappable(part)) {
+		hexagon_domain_update(domain, part->start, part->size, (int)partition_id);
+	}
 	return 0;
 }
 
-/*
- * A thread in supervisor mode has no map yet.
- * hexagon_mem_domain_enter() builds it when the thread drops to user mode.
- */
+/* z_hexagon_mem_domain_switch() maps the stack once the thread runs. */
 int arch_mem_domain_thread_add(struct k_thread *thread)
 {
-	if (thread->arch.priv_level != 0) {
-		hexagon_thread_map_rebuild(thread);
-	}
+	ARG_UNUSED(thread);
 	return 0;
 }
 
-/*
- * The core has already unlinked thread, so later rebuilds of its old
- * domain no longer mark its map stale: stop using the map until
- * arch_mem_domain_thread_add() rebuilds it.
- */
+/* thread->mem_domain_info.mem_domain still names the domain it leaves. */
 int arch_mem_domain_thread_remove(struct k_thread *thread)
 {
-	if (hexagon_map_thread == thread) {
-		hexagon_mem_domain_uninstall();
+	struct k_mem_domain *domain = thread->mem_domain_info.mem_domain;
+
+	if (domain != NULL && domain->arch.stack_owner == thread) {
+		domain->arch.stack_owner = NULL;
+		hexagon_domain_update_stack(domain, thread);
 	}
 	return 0;
 }
 
-/* Build thread's map, called once priv_level is set. */
-static void hexagon_mem_domain_enter(struct k_thread *thread)
-{
-	k_spinlock_key_t key = k_spin_lock(&z_mem_domain_lock);
-
-	hexagon_thread_map_rebuild(thread);
-	k_spin_unlock(&z_mem_domain_lock, key);
-}
-
 /*
- * Reinstall whichever hardware memory map matches _current: called at
- * every point Hexagon already reloads other per-thread hardware state
- * on switch-in (z_hexagon_thread_start, EVENT_EXIT) and once more from
- * arch_user_mode_enter() for the very first drop to user mode.
+ * Install the page table matching _current: called at every point
+ * Hexagon already reloads other per-thread hardware state on switch-in
+ * (z_hexagon_thread_start, EVENT_EXIT) and from arch_user_mode_enter()
+ * for the first drop to user mode.
  *
- * Resuming the thread whose map is installed is a no-op. Every rebuild
- * of that map, or of the domain list it chains to, uninstalls it first,
- * so the installed map is never stale.
+ * Threads of one domain share its table, and only the stack of the one
+ * that runs is mapped U=1: switching between them moves that mapping.
  */
 void z_hexagon_mem_domain_switch(void)
 {
 	struct k_thread *thread = k_sched_current_thread_query();
-	bool stale;
+	struct k_mem_domain *domain = thread->mem_domain_info.mem_domain;
+	struct k_thread *old_owner;
+	k_spinlock_key_t key;
 
-	if (thread->arch.priv_level == 0 || thread->mem_domain_info.mem_domain == NULL) {
-		hexagon_mem_domain_uninstall();
+	if (thread->arch.priv_level == 0 || domain == NULL) {
+		hexagon_kernel_table_install();
 		return;
 	}
 
-	if (thread == hexagon_map_thread) {
+	if (hexagon_installed_domain == domain && domain->arch.stack_owner == thread) {
 		return;
 	}
 
-	stale = thread->arch.map_stale != 0U || thread->arch.map_gen != hexagon_map_gen;
-	if (hexagon_vm_newmap(thread->arch.map, VM_TRANS_TYPE_LINEAR,
-			      stale ? VM_TLB_INVALIDATE_TRUE : VM_TLB_INVALIDATE_FALSE) != 0) {
-		k_panic();
+	key = k_spin_lock(&z_mem_domain_lock);
+	if (hexagon_installed_domain != domain) {
+		hexagon_domain_table_install(domain);
 	}
 
-	thread->arch.map_stale = 0;
-	thread->arch.map_gen = hexagon_map_gen;
-	hexagon_map_thread = thread;
+	old_owner = domain->arch.stack_owner;
+	if (old_owner != thread) {
+		domain->arch.stack_owner = thread;
+		if (old_owner != NULL) {
+			hexagon_domain_update_stack(domain, old_owner);
+		}
+		hexagon_domain_update_stack(domain, thread);
+	}
+	k_spin_unlock(&z_mem_domain_lock, key);
 }
 
 #endif /* CONFIG_USERSPACE */

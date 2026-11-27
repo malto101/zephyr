@@ -7,56 +7,86 @@
 #ifndef ZEPHYR_ARCH_HEXAGON_INCLUDE_HEXAGON_MMU_H_
 #define ZEPHYR_ARCH_HEXAGON_INCLUDE_HEXAGON_MMU_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <zephyr/arch/hexagon/arch.h>
 #include <hexagon_vm.h>
 
-/* Linear list every installed map ends with, see mmu.c. */
-extern struct hexagon_linear_entry hexagon_fixed_tail[];
+#define HEXAGON_PTE_PERM_MASK (__HVM_PTE_R | __HVM_PTE_W | __HVM_PTE_X | __HVM_PTE_U)
 
-/* Map installed while no user thread's map is. */
-extern struct hexagon_linear_entry hexagon_kernel_map[];
+#define HEXAGON_MMU_VM_START ((uintptr_t)CONFIG_KERNEL_VM_BASE)
+#define HEXAGON_MMU_VM_END   (HEXAGON_MMU_VM_START + (uintptr_t)CONFIG_KERNEL_VM_SIZE)
 
-/*
- * Chain entry to the runtime mappings list, which chains on to
- * hexagon_fixed_tail. Every installed map reaches the tail through it.
- */
-extern struct hexagon_linear_entry hexagon_dyn_link[];
+/* Kernel L1 table, installed while no memory domain's is. */
+extern uint32_t hexagon_kernel_l1[HEXAGON_MMU_PT_ENTRIES];
 
-/* Point hexagon_dyn_link at the runtime mappings, see mem_manage.c. */
-void hexagon_dyn_map_init(void);
+static inline uint32_t hexagon_pte(uintptr_t pa, uint32_t perms, uint32_t cache_attr)
+{
+	return ((uint32_t)pa & ~(CONFIG_MMU_PAGE_SIZE - 1U)) | perms | (cache_attr << 6);
+}
 
-/*
- * Note that vmclrmap() flushed the installed map's ASID after a
- * translation was removed: every other map must flush on its next
- * install. Defined with CONFIG_USERSPACE, see userspace.c.
- */
-void hexagon_map_flushed(void);
+static inline bool hexagon_va_in_vm(uintptr_t va)
+{
+	return va >= HEXAGON_MMU_VM_START && va < HEXAGON_MMU_VM_END;
+}
+
+static inline uint32_t hexagon_pt_index(uintptr_t va)
+{
+	return (va >> 12) & (HEXAGON_MMU_PT_ENTRIES - 1U);
+}
+
+/* L2 table an L1 entry points to, NULL for a block or invalid entry. */
+static inline uint32_t *hexagon_pde_l2(uint32_t pde)
+{
+	if ((pde & __HVM_PDE_S_MASK) != __HVM_PDE_S_4KB) {
+		return NULL;
+	}
+
+	return (uint32_t *)(uintptr_t)(pde & ~(CONFIG_MMU_PAGE_SIZE - 1U));
+}
+
+/* Kernel PTE slot for va, NULL if no L2 table covers it. */
+static inline uint32_t *hexagon_kernel_pte(uintptr_t va)
+{
+	uint32_t *l2 = hexagon_pde_l2(hexagon_kernel_l1[va >> HEXAGON_MMU_SLOT_SHIFT]);
+
+	return (l2 == NULL) ? NULL : &l2[hexagon_pt_index(va)];
+}
+
+/* Kernel translation of va: an L2 PTE, a block L1 entry, or 0 if unmapped. */
+static inline uint32_t hexagon_kernel_pte_get(uintptr_t va)
+{
+	uint32_t pde = hexagon_kernel_l1[va >> HEXAGON_MMU_SLOT_SHIFT];
+	uint32_t *l2 = hexagon_pde_l2(pde);
+
+	if (l2 != NULL) {
+		return l2[hexagon_pt_index(va)];
+	}
+
+	return ((pde & __HVM_PDE_S_MASK) == __HVM_PDE_S_INVALID) ? 0U : pde;
+}
 
 /*
  * 1 if the page-aligned [va, va + size) lies inside one identity range
- * of the boot-time map (image, console window, HVM kernel), 0 if it is
- * disjoint from all of them, -1 if it partially overlaps one.
+ * mapped at boot (image, console window, HVM kernel), 0 if it is disjoint
+ * from all of them, -1 if it partially overlaps one.
  */
 int hexagon_fixed_map_contains(uintptr_t va, size_t size);
 
-/* Round [*addr, *addr + *size) outward to whole 4KB pages. */
-void hexagon_align_region_to_page(uintptr_t *addr, size_t *size);
-
+#ifdef CONFIG_USERSPACE
 /*
- * Map the page-aligned [addr, addr + size) 1:1 with at most max_entries
- * linear entries written to entries[]. Return the number used.
+ * Note that vmclrmap() flushed the installed table's ASID after a
+ * translation was removed or changed: every other table must flush on
+ * its next install. See userspace.c.
  */
-uint32_t hexagon_decompose_region(struct hexagon_linear_entry *entries, uint32_t max_entries,
-				  uintptr_t addr, size_t size, uint32_t xwru, uint32_t cache_attr);
+void hexagon_map_flushed(void);
 
-/*
- * Map the page-aligned [va, va + size) to pa with at most max_entries
- * linear entries written to entries[]. Return the number used, or
- * -ENOMEM if they cannot cover the whole range.
- */
-int hexagon_decompose_mapping(struct hexagon_linear_entry *entries, uint32_t max_entries,
-			      uintptr_t va, uintptr_t pa, size_t size, uint32_t xwru,
-			      uint32_t cache_attr, uint32_t extra_high);
+/* Copy a new kernel L1 entry outside KERNEL_VM to every domain. */
+void hexagon_mem_domain_sync_l1(uint32_t slot);
+
+/* Recompute every domain's PTE for a changed kernel page in KERNEL_VM. */
+void hexagon_mem_domain_sync_page(uintptr_t va);
+#endif
 
 #endif /* ZEPHYR_ARCH_HEXAGON_INCLUDE_HEXAGON_MMU_H_ */

@@ -22,17 +22,6 @@ config PRIVILEGED_STACK_SIZE
 	# are reserved as FRAMELIMIT headroom for an event frame.
 	default 2048
 
-config HEXAGON_USER_STACK_ENTRIES
-	int "Linear-map entries per user thread for its own stack"
-	depends on USERSPACE
-	default 8
-	help
-	  Each user thread's linear list maps its own stack ahead of its
-	  memory domain's partitions. A stack takes one entry for each aligned
-	  4KB, 16KB, 64KB, ... chunk in its decomposition. Eight entries cover
-	  any stack below 64KB. Part of a stack that does not fit faults on access.
-	  Each entry adds 8 bytes to struct k_thread.
-
 config CPU_HAS_HEXAGON_HVX
 	bool
 	help
@@ -71,20 +60,18 @@ config HEXAGON_MMU
 	select SRAM_REGION_PERMISSIONS
 	help
 	  Enable memory management unit support for the Hexagon architecture.
-	  The kernel image is identity mapped at boot. Later mappings from
-	  k_mem_map(), k_mem_map_phys_bare() and device MMIO go to a runtime
-	  linear list and may have virt != phys.
+	  The kernel and each memory domain get an HVM page table
+	  (VM_TRANS_TYPE_TABLE) with 4KB pages over KERNEL_VM, which must hold
+	  the kernel image.
 
-config HEXAGON_MMU_DIRECT_MAP_ENTRIES
-	int "Linear entries for direct mappings outside KERNEL_VM"
+config HEXAGON_MMU_L2_TABLES
+	int "Second-level page tables for mappings outside KERNEL_VM"
 	depends on HEXAGON_MMU
-	default 32
+	default 16
 	help
-	  Runtime mappings live in one HVM linear list with one entry per
-	  page of KERNEL_VM, so mappings inside it never run out of entries.
-	  This adds entries for K_MEM_DIRECT_MAP mappings outside KERNEL_VM
-	  that the boot-time map does not already cover. Each takes one
-	  entry per naturally aligned 4 KB to 16 MB block. 16 bytes each.
+	  KERNEL_VM has its own second-level tables. Mappings elsewhere, such
+	  as K_MEM_DIRECT_MAP device MMIO, take one table from this pool for
+	  each 4MB region they touch. 4KB each.
 
 config HEXAGON_H2_KERNEL_BASE
 	hex "H2 hypervisor kernel image base address"

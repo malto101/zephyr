@@ -30,19 +30,6 @@
 #include <zephyr/arch/arch_interface.h>
 #include <hexagon_vm.h>
 
-#ifdef CONFIG_USERSPACE
-/*
- * Per-partition entry budget for the greedy largest-aligned-size-class
- * decomposition hexagon_mem_domain_rebuild() uses to turn an arbitrary
- * [start, start+size) range into VM_TRANS_TYPE_LINEAR entries. A
- * well-aligned region (the common case) needs exactly one entry. The
- * budget also covers oddly-aligned or sized regions. Running out
- * mid-region is logged and stops early rather than treating it as
- * fatal.
- */
-#define HEXAGON_MEM_DOMAIN_PARTITION_ENTRIES 4
-#endif
-
 /**
  * @brief Callee-saved register context for cooperative context switching.
  */
@@ -139,17 +126,6 @@ struct _thread_arch {
 	void *user_p1;
 	void *user_p2;
 	void *user_p3;
-
-	/*
-	 * Linear map installed while this thread runs in user mode: its own
-	 * stack, then a chain entry to its memory domain's list. map_stale
-	 * is set whenever either changes, and map_gen lags behind once a
-	 * runtime mapping is removed, so the next install invalidates this
-	 * map's HVM ASID.
-	 */
-	uint8_t map_stale;
-	uint32_t map_gen;
-	struct hexagon_linear_entry map[CONFIG_HEXAGON_USER_STACK_ENTRIES + 1] __aligned(8);
 
 	/*
 	 * Dedicated kernel-mode stack used while executing in kernel mode

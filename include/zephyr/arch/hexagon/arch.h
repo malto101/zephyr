@@ -21,6 +21,7 @@
 #include <zephyr/arch/common/ffs.h>
 #include <zephyr/arch/common/sys_io.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/sys/slist.h>
 #include <zephyr/kernel/mm.h>
 #include <hexagon_vm.h>
 #include <irq.h>
@@ -96,6 +97,19 @@ static inline bool arch_is_in_isr(void)
 	return z_hexagon_isr_nesting != 0U;
 }
 
+#ifdef CONFIG_MMU
+/* VM_TRANS_TYPE_TABLE geometry: 1024 entries per table, 4MB per L1 entry. */
+#define HEXAGON_MMU_PT_ENTRIES 1024U
+#define HEXAGON_MMU_PT_ALIGN   4096
+#define HEXAGON_MMU_SLOT_SHIFT 22U
+
+/* L1 entries covering KERNEL_VM, each with a dedicated L2 table. */
+#define HEXAGON_MMU_VM_SLOT_FIRST (CONFIG_KERNEL_VM_BASE >> HEXAGON_MMU_SLOT_SHIFT)
+#define HEXAGON_MMU_VM_SLOTS                                                                       \
+	((((CONFIG_KERNEL_VM_BASE + CONFIG_KERNEL_VM_SIZE - 1) >> HEXAGON_MMU_SLOT_SHIFT) -       \
+	  HEXAGON_MMU_VM_SLOT_FIRST) + 1)
+#endif
+
 #ifdef CONFIG_USERSPACE
 /*
  * A user thread's stack is mapped U=1 in whole MMU pages, so it must
@@ -134,14 +148,18 @@ typedef uint32_t k_mem_partition_attr_t;
 /**
  * @brief Architecture-specific memory domain data.
  *
- * list holds one dense run of VM_TRANS_TYPE_LINEAR entries per
- * partition, then a chain entry to the shared fixed tail. It is never
- * installed itself: each member user thread's own map chains to it.
+ * The domain's VM_TRANS_TYPE_TABLE page table. l1 shares the kernel's
+ * second-level tables outside KERNEL_VM and points at the private l2
+ * tables inside it, which hold the domain's partitions and the stack of
+ * stack_owner, the member thread that last ran in user mode.
  */
 struct arch_mem_domain {
-	struct hexagon_linear_entry
-		list[(CONFIG_MAX_DOMAIN_PARTITIONS * HEXAGON_MEM_DOMAIN_PARTITION_ENTRIES) + 1]
-		__aligned(8);
+	uint32_t l1[HEXAGON_MMU_PT_ENTRIES] __aligned(HEXAGON_MMU_PT_ALIGN);
+	uint32_t l2[HEXAGON_MMU_VM_SLOTS][HEXAGON_MMU_PT_ENTRIES] __aligned(HEXAGON_MMU_PT_ALIGN);
+	sys_snode_t node;
+	struct k_thread *stack_owner;
+	uint32_t gen;
+	bool stale;
 };
 
 typedef struct arch_mem_domain arch_mem_domain_t;
