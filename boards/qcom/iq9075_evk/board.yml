@@ -1,0 +1,6 @@
+board:
+  name: iq9075_evk
+  full_name: IQ-9075 EVK
+  vendor: qcom
+  socs:
+    - name: sa8775p

@@ -1,0 +1,118 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+#include <mem.h>
+#include <zephyr/dt-bindings/mailbox/qcom-ipcc.h>
+
+/*
+ * Zephyr on compute DSP 0, as an HVM guest booted by Linux remoteproc.
+ * Linux loads one image into the cdsp0 PAS carveout (0x9b500000, 30MB):
+ * HVM at 0x9b800000, Zephyr at 0x9c000000.
+ */
+
+/ {
+	model = "Qualcomm IQ-9075 EVK CDSP0";
+	compatible = "qcom,iq9075-evk-cdsp0", "qcom,sa8775p";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			compatible = "qcom,hexagon-v67";
+			reg = <0>;
+			/* QTimer, HVM reports the real rate at runtime */
+			clock-frequency = <19200000>;
+		};
+	};
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &sram0;
+		zephyr,ram-console = &ram_console;
+	};
+
+	soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		interrupt-parent = <&intc>;
+
+		intc: interrupt-controller {
+			compatible = "qcom,hvm-pic";
+			interrupt-controller;
+			#interrupt-cells = <2>;
+			#address-cells = <1>;
+		};
+
+		gpt@ab000000 {
+			compatible = "qcom,hvm-timer";
+			reg = <0xab000000 0x1000>;
+			interrupts = <0x0c 0x00>;
+		};
+
+		tcsr_mutex: hwlock@1f40000 {
+			compatible = "qcom,tcsr-mutex";
+			reg = <0x01f40000 0x20000>;
+			#hwlock-cells = <1>;
+			num-locks = <32>;
+			/* SMEM host 5, plus one */
+			proc-id = <6>;
+		};
+
+		/* CDSP's own IPCC client frame */
+		ipcc: mailbox@406000 {
+			compatible = "qcom,ipcc";
+			reg = <0x00406000 0x1000>;
+			/* L2VIC 30 */
+			interrupts = <62 0x00>;
+			#mbox-cells = <1>;
+		};
+	};
+
+	smem: smem@90900000 {
+		compatible = "qcom,smem";
+		reg = <0x90900000 DT_SIZE_K(2048)>;
+		hwlocks = <&tcsr_mutex 3>;
+	};
+
+	smp2p-apss {
+		compatible = "qcom,smp2p";
+		qcom,smem = <94>, <432>;
+		qcom,local-pid = <5>;
+		qcom,remote-pid = <0>;
+		mboxes = <&ipcc IPCC_CHANNEL(IPCC_CLIENT_APSS, IPCC_MPROC_SIGNAL_SMP2P)>;
+		mbox-names = "tx";
+	};
+
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		hvm_kernel: hvm-kernel@9b800000 {
+			reg = <0x9b800000 DT_SIZE_M(8)>;
+		};
+
+		/* Read from Linux: devmem / dd of /dev/mem at 0x9d000000 */
+		ram_console: memory@9d000000 {
+			compatible = "zephyr,memory-region";
+			reg = <0x9d000000 DT_SIZE_K(64)>;
+			zephyr,memory-region = "RAM_CONSOLE";
+		};
+	};
+
+	sram0: memory@9c000000 {
+		device_type = "memory";
+		compatible = "mmio-sram";
+		reg = <0x9c000000 DT_SIZE_M(16)>;
+	};
+};

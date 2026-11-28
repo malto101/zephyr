@@ -1,0 +1,18 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+CONFIG_COMPILER_RT_RTLIB=y
+CONFIG_BUILD_OUTPUT_BIN=y
+
+# No UART on the DSP, Linux reads the console from DDR
+CONFIG_CONSOLE=y
+CONFIG_RAM_CONSOLE=y
+CONFIG_PRINTK=y
+
+# HVM maps all of DDR cached, devices and SMEM need page tables
+CONFIG_HEXAGON_MMU=y
+CONFIG_KERNEL_VM_SIZE=0x1000000
+
+CONFIG_HEXAGON_TIMER=y
+CONFIG_EXCEPTION_DEBUG=y
+CONFIG_HW_STACK_PROTECTION=y

@@ -1,0 +1,11 @@
+identifier: iq9075_evk/sa8775p/cdsp0
+name: IQ-9075 EVK CDSP0
+type: mcu
+arch: hexagon
+toolchain:
+  - hexagon
+  - llvm
+ram: 16384
+testing:
+  default: false
+vendor: qcom
