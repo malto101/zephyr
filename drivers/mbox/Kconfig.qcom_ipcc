@@ -1,0 +1,15 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+config MBOX_QCOM_IPCC
+	bool "Qualcomm IPCC mailbox"
+	default y
+	depends on DT_HAS_QCOM_IPCC_ENABLED
+	help
+	  Signalling-only mailbox on the Qualcomm Inter-Processor Communication
+	  Controller, driven through this client's register frame.
+
+config MBOX_QCOM_IPCC_RX_CHANNELS
+	int "Receive callbacks per IPCC instance"
+	default 4
+	depends on MBOX_QCOM_IPCC

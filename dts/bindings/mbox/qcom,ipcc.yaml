@@ -1,0 +1,26 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Qualcomm Inter-Processor Communication Controller (IPCC).
+
+  reg is this client's register frame. The mbox specifier cell is
+  IPCC_CHANNEL(client, signal), see <zephyr/dt-bindings/mailbox/qcom-ipcc.h>:
+  the remote client when sending, the sender when receiving.
+
+compatible: "qcom,ipcc"
+
+include: [base.yaml, mailbox-controller.yaml]
+
+properties:
+  reg:
+    required: true
+
+  interrupts:
+    required: true
+
+  "#mbox-cells":
+    const: 1
+
+mbox-cells:
+  - channel
