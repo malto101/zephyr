@@ -1,0 +1,32 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Qualcomm TCSR mutex hardware spinlocks.
+
+  A lock is taken by writing proc-id to its register and reading it back,
+  and released by writing 0.
+
+compatible: "qcom,tcsr-mutex"
+
+include:
+  - name: base.yaml
+  - name: hwspinlock-controller.yaml
+
+properties:
+  reg:
+    required: true
+
+  stride:
+    type: int
+    default: 0x1000
+    description: Distance in bytes between two lock registers.
+
+  proc-id:
+    type: int
+    required: true
+    description: |
+      Value this processor writes to take a lock, its SMEM host ID plus one.
+
+hwlock-cells:
+  - id

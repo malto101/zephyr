@@ -1,0 +1,10 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+config HWSPINLOCK_QCOM_TCSR_MUTEX
+	bool "Qualcomm TCSR mutex"
+	default y
+	depends on DT_HAS_QCOM_TCSR_MUTEX_ENABLED
+	help
+	  Hardware spinlocks in the Qualcomm TCSR mutex block, shared with
+	  the other processors of the SoC.
