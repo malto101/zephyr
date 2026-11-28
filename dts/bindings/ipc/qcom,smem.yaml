@@ -1,0 +1,17 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Qualcomm shared memory (SMEM). The table of contents sits in the last
+  4K of reg. hwlocks is the lock serializing allocations.
+
+compatible: "qcom,smem"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  hwlocks:
+    required: true

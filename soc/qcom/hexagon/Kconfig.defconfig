@@ -1,0 +1,19 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+if SOC_FAMILY_QCOM_HEXAGON
+
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	default $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)
+
+# HVM loadlinux maps L2VIC line N to virtual IRQ 32 + N
+config NUM_IRQS
+	default 128
+
+config MBOX
+	default y if DT_HAS_QCOM_SMP2P_ENABLED
+
+config HWSPINLOCK
+	default y if DT_HAS_QCOM_SMP2P_ENABLED
+
+endif # SOC_FAMILY_QCOM_HEXAGON

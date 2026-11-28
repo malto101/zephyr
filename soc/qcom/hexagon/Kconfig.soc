@@ -1,0 +1,21 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_FAMILY_QCOM_HEXAGON
+	bool
+
+config SOC_FAMILY
+	default "qcom_hexagon" if SOC_FAMILY_QCOM_HEXAGON
+
+config SOC_SA8775P
+	bool
+	select SOC_FAMILY_QCOM_HEXAGON
+
+config SOC_SA8775P_CDSP0
+	bool
+	select SOC_SA8775P
+	help
+	  SA8775P (Lemans) compute DSP 0, Hexagon v73.
+
+config SOC
+	default "sa8775p" if SOC_SA8775P

@@ -1,0 +1,31 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Qualcomm shared memory point-to-point (SMP2P) link to one remote
+  processor, over SMEM items signalled through a mailbox.
+
+compatible: "qcom,smp2p"
+
+include: base.yaml
+
+properties:
+  qcom,smem:
+    type: array
+    required: true
+    description: SMEM items of the outbound and inbound states.
+
+  qcom,local-pid:
+    type: int
+    required: true
+
+  qcom,remote-pid:
+    type: int
+    required: true
+
+  mboxes:
+    required: true
+
+  mbox-names:
+    required: true
+    description: Must be "tx".

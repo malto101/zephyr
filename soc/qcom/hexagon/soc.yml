@@ -1,0 +1,6 @@
+family:
+  - name: qcom_hexagon
+    socs:
+      - name: sa8775p
+        cpuclusters:
+          - name: cdsp0

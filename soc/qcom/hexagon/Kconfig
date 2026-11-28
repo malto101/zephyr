@@ -1,0 +1,19 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_FAMILY_QCOM_HEXAGON
+	select HEXAGON
+	select GEN_ISR_TABLES
+
+config SOC_SA8775P_CDSP0
+	select CPU_HAS_HEXAGON_HVX
+
+config QCOM_HEXAGON_SMP2P_READY
+	bool "Report boot to the remoteproc host over SMP2P"
+	default y
+	depends on DT_HAS_QCOM_SMP2P_ENABLED
+	depends on MBOX && HWSPINLOCK
+	help
+	  Allocate this processor's outbound SMP2P item in SMEM and set the
+	  ready and handover bits that Linux remoteproc waits for after
+	  starting the DSP.
