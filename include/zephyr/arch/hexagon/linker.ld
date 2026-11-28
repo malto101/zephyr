@@ -8,6 +8,7 @@
 #include <zephyr/linker/sections.h>
 #include <zephyr/linker/linker-defs.h>
 #include <zephyr/linker/linker-tool.h>
+#include <zephyr/linker/devicetree_regions.h>
 
 #define ROMABLE_REGION              RAM
 #define RAMABLE_REGION              RAM
@@ -34,6 +35,7 @@ MEMORY
 {
     RAM (rwx)     : ORIGIN = DT_REG_ADDR(DT_CHOSEN(zephyr_sram)), LENGTH = DT_REG_SIZE(DT_CHOSEN(zephyr_sram))
     IDT_LIST (wx) : ORIGIN = 0xFFFFF7FF, LENGTH = 2K
+    LINKER_DT_REGIONS()
 }
 
 ENTRY(__start)
@@ -274,6 +276,8 @@ SECTIONS
     #include <zephyr/linker/ram-end.ld>
 
     GROUP_END(RAMABLE_REGION)
+
+    LINKER_DT_SECTIONS()
 
     #ifdef CONFIG_GEN_ISR_TABLES
     #include <zephyr/linker/intlist.ld>
