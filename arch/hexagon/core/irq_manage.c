@@ -115,7 +115,7 @@ void z_hexagon_event_exit_user_sync(void)
 #endif
 
 /* Handle general exceptions */
-#define GSR_CAUSE_MASK 0xFF
+#define GSR_CAUSE_MASK 0xFFFFU
 #define HEXAGON_CAUSE_NO_COPROC   0x16U
 #define HEXAGON_CAUSE_STACK_LIMIT 0x27U
 
@@ -197,7 +197,7 @@ static void z_hexagon_interrupt_handler(struct event_context *ctx)
 	uint32_t *nested;
 
 	/*
-	 * GSR.CAUSE (bits 7:0) contains the virtual IRQ number
+	 * GSR.CAUSE (bits 15:0) contains the virtual IRQ number
 	 * delivered by H2 (e.g. 12 for the timer).  The interrupt
 	 * has already been consumed from the pending bitmap, so
 	 * vmintop GET would not find it.
